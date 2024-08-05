@@ -1,0 +1,51 @@
+import requests
+
+# Replace with your NetBox URL and API token
+netbox_url = "http://10.133.35.137:8000/api/"
+token = "fc736113e8554447b1288baa712f15d3a254b"
+
+# Headers for authentication
+headers = {
+    "Authorization": f"Token {token}",
+    "Content-Type": "application/json",
+}
+
+# Search for the IP address
+ip_address = "10.133.35.148"
+response = requests.get(f"{netbox_url}ipam/ip-addresses/?address={ip_address}", headers=headers)
+
+if response.status_code == 200:
+    results = response.json()
+    if results['count'] == 0:
+        print(f"IP address {ip_address} not found in NetBox.")
+    else:
+        ip_details = results['results'][0]
+        print(f"IP Address Details: {ip_details}")
+        
+        # Get the associated device ID
+        device_id = ip_details['assigned_object']['id']
+        device_type = ip_details['assigned_object']['type']
+        
+        if device_type == 'dcim.interface':
+            # Fetch the interface details to get the device ID
+            interface_id = device_id
+            interface_response = requests.get(f"{netbox_url}dcim/interfaces/{interface_id}/", headers=headers)
+            if interface_response.status_code == 200:
+                interface_details = interface_response.json()
+                device_id = interface_details['device']['id']
+            else:
+                print(f"Failed to fetch interface details. Status code: {interface_response.status_code}")
+                print("Response:", interface_response.text)
+                exit(1)
+        
+        # Fetch the device details
+        response = requests.get(f"{netbox_url}dcim/devices/{device_id}/", headers=headers)
+        if response.status_code == 200:
+            device_details = response.json()
+            print(f"Device Details: {device_details}")
+        else:
+            print(f"Failed to fetch device details. Status code: {response.status_code}")
+            print("Response:", response.text)
+else:
+    print(f"Failed to search IP address. Status code: {response.status_code}")
+    print("Response:", response.text)
