@@ -1,0 +1,27 @@
+{
+  "device": {
+    "name": "{{ device.name }}",
+    "type": "{{ device.device_type.model }}",
+    "manufacturer": "{{ device.device_type.manufacturer.name }}",
+    "site": "{{ device.site.name }}",
+    "serial": "{{ device.serial }}",
+    "interfaces": [
+      {% for interface in device.interfaces %}
+      {
+        "name": "{{ interface.name }}",
+        "type": "{{ interface.type.display }}",
+        "status": "{{ interface.status }}",
+        "description": "{{ interface.description }}"
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ],
+    "ip_addresses": [
+      {% for ip in device.ip_addresses %}
+      {
+        "address": "{{ ip.address }}",
+        "description": "{{ ip.description }}"
+      }{% if not loop.last %},{% endif %}
+      {% endfor %}
+    ]
+  }
+}
