@@ -10,7 +10,7 @@
       {
         "name": "{{ interface.name }}",
         "type": "{{ interface.type.display }}",
-        "status": "{{ interface.status }}",
+        "status": "{{ interface.status.display }}",
         "description": "{{ interface.description }}"
       }{% if not loop.last %},{% endif %}
       {% endfor %}
