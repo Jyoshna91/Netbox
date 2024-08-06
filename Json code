@@ -16,7 +16,7 @@
       {% endfor %}
     ],
     "ip_addresses": [
-      {% for ip in device.ip_addresses %}
+      {% for ip in device.primary_ip4 %}
       {
         "address": "{{ ip.address }}",
         "description": "{{ ip.description }}"
