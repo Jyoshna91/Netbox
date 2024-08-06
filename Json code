@@ -1,25 +1,25 @@
 {
   "device": {
-    "name": "{{ device.name }}",
-    "type": "{{ device.device_type.model }}",
-    "manufacturer": "{{ device.device_type.manufacturer.name }}",
-    "site": "{{ device.site.name }}",
-    "serial": "{{ device.serial }}",
+    "name": "{{ data['device']['name'] }}",
+    "type": "{{ data['device_type']['model'] }}",
+    "manufacturer": "{{ data['device_type']['manufacturer']['name'] }}",
+    "site": "{{ data['site']['name'] }}",
+    "serial": "{{ data['serial'] }}",
     "interfaces": [
-      {% for interface in device.interfaces %}
+      {% for interface in data['interfaces'] %}
       {
-        "name": "{{ interface.name }}",
-        "type": "{{ interface.type.display }}",
-        "status": "{{ interface.status.display }}",
-        "description": "{{ interface.description }}"
+        "name": "{{ interface['name'] }}",
+        "type": "{{ interface['type']['display'] }}",
+        "status": "{{ interface['status']['display'] }}",
+        "description": "{{ interface['description'] }}"
       }{% if not loop.last %},{% endif %}
       {% endfor %}
     ],
     "ip_addresses": [
-      {% for ip in device.ip_addresses %}
+      {% for ip in data['ip_addresses'] %}
       {
-        "address": "{{ ip.address }}",
-        "description": "{{ ip.description }}"
+        "address": "{{ ip['address'] }}",
+        "description": "{{ ip['description'] }}"
       }{% if not loop.last %},{% endif %}
       {% endfor %}
     ]
