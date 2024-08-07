@@ -1,51 +1,112 @@
+
 import requests
+import json
+import pynetbox
+import urllib3
 
-# Replace with your NetBox URL and API token
-netbox_url = "http://10.133.35.137:8000/api/"
-token = "fc736113e8554447b1288baa712f15d3a254b"
+# Suppress InsecureRequestWarning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Headers for authentication
+# Replace these variables with your switch's details and NetBox API details
+switch_ip = "10.133.35.148"
+username = "admin"
+password = "tcs123"
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# NX-API URL - ensure you're using the correct protocol (http or https)
+nx_api_url = f"https://{switch_ip}/ins"
+
+# Headers for the NX-API request
 headers = {
-    "Authorization": f"Token {token}",
-    "Content-Type": "application/json",
+    "content-type": "application/json-rpc"
 }
 
-# Search for the IP address
-ip_address = "10.133.35.148"
-response = requests.get(f"{netbox_url}ipam/ip-addresses/?address={ip_address}", headers=headers)
+# Payload to fetch hardware details, configuration, and system resources
+payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show inventory",
+            "version": 1
+        },
+        "id": 1
+    },
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show running-config",
+            "version": 1
+        },
+        "id": 2
+    },
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show system resources",
+            "version": 1
+        },
+        "id": 3
+    }
+]
 
-if response.status_code == 200:
-    results = response.json()
-    if results['count'] == 0:
-        print(f"IP address {ip_address} not found in NetBox.")
+try:
+    # Debugging Step: Check connection to the switch
+    print(f"Attempting to connect to the switch at {nx_api_url}")
+    response = requests.post(nx_api_url, data=json.dumps(payload), headers=headers, auth=(username, password), verify=False)
+
+    # Parse the response
+    if response.status_code == 200:
+        data = response.json()
+
+        # Extract inventory details
+        inventory = data['result'][0]['body']['TABLE_inv']['ROW_inv']
+        print("Inventory Details:")
+        print(json.dumps(inventory, indent=4))
+
+        # Extract running configuration
+        running_config = data['result'][1]['body']
+        print("Running Configuration:")
+        print(running_config)
+
+        # Extract system resources
+        system_resources = data['result'][2]['body']
+        print("System Resources:")
+        print(system_resources)
+
+        # Connect to NetBox
+        nb = pynetbox.api(netbox_url, token=netbox_token)
+
+        # Debugging Step: Verify connection to NetBox
+        try:
+            nb.dcim.devices.all()
+            print("Successfully connected to NetBox.")
+        except Exception as e:
+            print(f"Failed to connect to NetBox: {e}")
+            exit(1)
+
+        # Update NetBox with the fetched hardware details
+        device_name = "Device"
+        device = nb.dcim.devices.get(name=device_name)
+
+        if device:
+            for item in inventory:
+                part_number = item.get('productid', 'N/A')
+                serial_number = item.get('serialnum', 'N/A')
+                description = item.get('desc', 'N/A')
+
+                print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
+
+                # You can update custom fields or other attributes in NetBox as needed
+                # Example: Update a custom field
+                # custom_fields = device.custom_fields
+                # custom_fields['part_number'] = part_number
+                # device.update({'custom_fields': custom_fields})
     else:
-        ip_details = results['results'][0]
-        print(f"IP Address Details: {ip_details}")
-        
-        # Get the associated device ID
-        device_id = ip_details['assigned_object']['id']
-        device_type = ip_details['assigned_object']['type']
-        
-        if device_type == 'dcim.interface':
-            # Fetch the interface details to get the device ID
-            interface_id = device_id
-            interface_response = requests.get(f"{netbox_url}dcim/interfaces/{interface_id}/", headers=headers)
-            if interface_response.status_code == 200:
-                interface_details = interface_response.json()
-                device_id = interface_details['device']['id']
-            else:
-                print(f"Failed to fetch interface details. Status code: {interface_response.status_code}")
-                print("Response:", interface_response.text)
-                exit(1)
-        
-        # Fetch the device details
-        response = requests.get(f"{netbox_url}dcim/devices/{device_id}/", headers=headers)
-        if response.status_code == 200:
-            device_details = response.json()
-            print(f"Device Details: {device_details}")
-        else:
-            print(f"Failed to fetch device details. Status code: {response.status_code}")
-            print("Response:", response.text)
-else:
-    print(f"Failed to search IP address. Status code: {response.status_code}")
-    print("Response:", response.text)
+        print(f"Failed to fetch details: {response.status_code}")
+
+except requests.exceptions.RequestException as e:
+    print(f"Error connecting to the switch: {e}")
