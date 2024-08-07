@@ -65,17 +65,15 @@ try:
         print("Response Data:")
         print(json.dumps(data, indent=4))
 
-        # Extract inventory details
+        # Extract the correct keys for inventory, configuration, and system resources
         inventory = data['result'][0]['body']['TABLE_inv']['ROW_inv']
         print("Inventory Details:")
         print(json.dumps(inventory, indent=4))
 
-        # Extract running configuration
         running_config = data['result'][1]['body']
         print("Running Configuration:")
         print(running_config)
 
-        # Extract system resources
         system_resources = data['result'][2]['body']
         print("System Resources:")
         print(system_resources)
