@@ -1,0 +1,144 @@
+import requests
+import json
+import pynetbox
+
+# Replace these variables with your switch's details and NetBox API details
+switch_ip = "10.133.35.148"
+username = "admin"
+password = "tcs123"
+netbox_url = "http://10.133.35.137:8000/dcim/devices/"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# NX-API URL
+url = f"https://10.133.35.148/ins"
+
+# Headers for the NX-API request
+headers = {
+    "content-type": "application/json-rpc"
+}
+
+# Payload to fetch hardware details
+payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show inventory",
+            "version": 1
+        },
+        "id": 1
+    }
+]
+
+# Make the request
+response = requests.post(url, data=json.dumps(payload), headers=headers, auth=(username, password), verify=False)
+
+# Parse the response
+if response.status_code == 200:
+    data = response.json()
+    inventory = data['result']['body']['TABLE_inv']['ROW_inv']
+    print(json.dumps(inventory, indent=4))
+
+    # Connect to NetBox
+    nb = pynetbox.api(netbox_url, token=netbox_token)
+
+    # Update NetBox with the fetched hardware details
+    device_name = "Device"
+    device = nb.dcim.devices.get(name=device_name)
+
+    if device:
+        for item in inventory:
+            part_number = item.get('productid', 'N/A')
+            serial_number = item.get('serialnum', 'N/A')
+            description = item.get('desc', 'N/A')
+
+            print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
+
+            # You can update custom fields or other attributes in NetBox as needed
+            # For example, update a custom field:
+            # custom_fields = device.custom_fields
+            # custom_fields['part_number'] = part_number
+            # device.update({'custom_fields': custom_fields})
+else:
+    print(f"Failed to fetch details: {response.status_code}")
+
+______________________________________________________________________________________________________
+Traceback (most recent call last):
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connection.py", line 196, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/util/connection.py", line 60, in create_connection
+    for res in socket.getaddrinfo(host, port, family, socket.SOCK_STREAM):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socket.py", line 963, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno -2] Name or service not known
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connectionpool.py", line 789, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connectionpool.py", line 495, in _make_request
+    conn.request(
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connection.py", line 398, in request
+    self.endheaders()
+  File "/usr/lib/python3.12/http/client.py", line 1331, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/usr/lib/python3.12/http/client.py", line 1091, in _send_output
+    self.send(msg)
+  File "/usr/lib/python3.12/http/client.py", line 1035, in send
+    self.connect()
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connection.py", line 236, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connection.py", line 203, in _new_conn
+    raise NameResolutionError(self.host, self, e) from e
+urllib3.exceptions.NameResolutionError: <urllib3.connection.HTTPConnection object at 0x7d0f390cb620>: Failed to resolve 'netbox.example.com' ([Errno -2] Name or service not known)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/requests/adapters.py", line 667, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/connectionpool.py", line 843, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='netbox.example.com', port=80): Max retries exceeded with url: /api/dcim/devices/?name=Device&limit=0 (Caused by NameResolutionError("<urllib3.connection.HTTPConnection object at 0x7d0f390cb620>: Failed to resolve 'netbox.example.com' ([Errno -2] Name or service not known)"))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/tcs/opt/netbox/netbox/Netbox_test.py", line 47, in <module>
+    device = nb.dcim.devices.get(name=device_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/pynetbox/core/endpoint.py", line 162, in get
+    ret = next(resp, None)
+          ^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/pynetbox/core/response.py", line 128, in __next__
+    next(self.response), self.endpoint.api, self.endpoint
+    ^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/pynetbox/core/query.py", line 292, in get
+    req = self._make_call(add_params=add_params)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/pynetbox/core/query.py", line 242, in _make_call
+    req = getattr(self.http_session, verb)(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tcs/my_netbox_env/lib/python3.12/site-packages/requests/adapters.py", line 700, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='netbox.example.com', port=80): Max retries exceeded with url: /api/dcim/devices/?name=Device&limit=0 (Caused by NameResolutionError("<urllib3.connection.HTTPConnection object at 0x7d0f390cb620>: Failed to resolve 'netbox.example.com' ([Errno -2] Name or service not known)"))
