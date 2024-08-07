@@ -1,0 +1,63 @@
+import requests
+import json
+import pynetbox
+
+# Replace these variables with your switch's details and NetBox API details
+switch_ip = "10.133.35.148"
+username = "admin"
+password = "tcs123"
+netbox_url = "http://10.133.35.137:8000/api/"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# NX-API URL
+url = f"https://{switch_ip}/ins"
+
+# Headers for the NX-API request
+headers = {
+    "content-type": "application/json-rpc"
+}
+
+# Payload to fetch hardware details
+payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show inventory",
+            "version": 1
+        },
+        "id": 1
+    }
+]
+
+# Make the request
+response = requests.post(url, data=json.dumps(payload), headers=headers, auth=(username, password), verify=False)
+
+# Parse the response
+if response.status_code == 200:
+    data = response.json()
+    inventory = data['result']['body']['TABLE_inv']['ROW_inv']
+    print(json.dumps(inventory, indent=4))
+
+    # Connect to NetBox
+    nb = pynetbox.api(netbox_url, token=netbox_token, ssl_verify=False)
+
+    # Update NetBox with the fetched hardware details
+    device_name = "Device"
+    device = nb.dcim.devices.get(name=device_name)
+
+    if device:
+        for item in inventory:
+            part_number = item.get('productid', 'N/A')
+            serial_number = item.get('serialnum', 'N/A')
+            description = item.get('desc', 'N/A')
+
+            print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
+
+            # You can update custom fields or other attributes in NetBox as needed
+            # For example, update a custom field:
+            # custom_fields = device.custom_fields
+            # custom_fields['part_number'] = part_number
+            # device.update({'custom_fields': custom_fields})
+else:
+    print(f"Failed to fetch details: {response.status_code}")
