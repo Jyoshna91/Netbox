@@ -1,4 +1,3 @@
-
 import requests
 import json
 import pynetbox
@@ -61,6 +60,10 @@ try:
     # Parse the response
     if response.status_code == 200:
         data = response.json()
+
+        # Debugging Step: Print the entire response data to understand the structure
+        print("Response Data:")
+        print(json.dumps(data, indent=4))
 
         # Extract inventory details
         inventory = data['result'][0]['body']['TABLE_inv']['ROW_inv']
