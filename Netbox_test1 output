@@ -1,3 +1,87 @@
+cat Netbox_test1.py 
+
+import requests
+import json
+import pynetbox
+import urllib3
+
+# Suppress InsecureRequestWarning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Replace these variables with your switch's details and NetBox API details
+switch_ip = "10.133.35.148"
+username = "admin"
+password = "tcs123"
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# NX-API URL - ensure you're using the correct protocol (http or https)
+nx_api_url = f"https://{switch_ip}/ins"
+
+# Headers for the NX-API request
+headers = {
+    "content-type": "application/json-rpc"
+}
+
+# Payload to fetch hardware details
+payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show inventory",
+            "version": 1
+        },
+        "id": 1
+    }
+]
+
+try:
+    # Debugging Step: Check connection to the switch
+    print(f"Attempting to connect to the switch at {nx_api_url}")
+    response = requests.post(nx_api_url, data=json.dumps(payload), headers=headers, auth=(username, password), verify=False)
+
+    # Parse the response
+    if response.status_code == 200:
+        data = response.json()
+        inventory = data['result']['body']['TABLE_inv']['ROW_inv']
+        print(json.dumps(inventory, indent=4))
+
+        # Connect to NetBox
+        nb = pynetbox.api(netbox_url, token=netbox_token)
+
+        # Debugging Step: Verify connection to NetBox
+        try:
+            nb.dcim.devices.all()
+            print("Successfully connected to NetBox.")
+        except Exception as e:
+            print(f"Failed to connect to NetBox: {e}")
+            exit(1)
+
+        # Update NetBox with the fetched hardware details
+        device_name = "Device"
+        device = nb.dcim.devices.get(name=device_name)
+
+        if device:
+            for item in inventory:
+                part_number = item.get('productid', 'N/A')
+                serial_number = item.get('serialnum', 'N/A')
+                description = item.get('desc', 'N/A')
+
+                print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
+
+                # You can update custom fields or other attributes in NetBox as needed
+                # Example: Update a custom field
+                # custom_fields = device.custom_fields
+                # custom_fields['part_number'] = part_number
+                # device.update({'custom_fields': custom_fields})
+    else:
+        print(f"Failed to fetch details: {response.status_code}")
+
+except requests.exceptions.RequestException as e:
+    print(f"Error connecting to the switch: {e}")
+
+_____________________________________________
 tcs@tcs-HP-Compaq-Elite-8300-SFF:~/opt/netbox/netbox$ python3 Netbox_test1.py 
 /usr/lib/python3/dist-packages/urllib3/connectionpool.py:1100: InsecureRequestWarning: Unverified HTTPS request is being made to host '10.133.35.148'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
   warnings.warn(
