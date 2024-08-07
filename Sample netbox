@@ -1,3 +1,4 @@
+
 import paramiko
 import pynetbox
 import time
@@ -81,14 +82,22 @@ device = nb.dcim.devices.get(name=device_name)
 if device:
     print(f"Device found in NetBox: {device.name}")
 
+    # Ensure custom fields exist before updating
+    custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
+    custom_field_names = [cf.name for cf in custom_fields]
+
+    custom_field_updates = {}
+    if "version" in custom_field_names:
+        custom_field_updates["version"] = parsed_data["version"]["version"]
+
     # Update device details with parsed data
-    # Example: Update device serial number and version
-    device.update({
+    update_data = {
         "serial": parsed_data["inventory"][0]["serial_number"],
-        "custom_fields": {
-            "version": parsed_data["version"]["version"]
-        }
-    })
+    }
+    if custom_field_updates:
+        update_data["custom_fields"] = custom_field_updates
+
+    device.update(update_data)
     
     # Add inventory items
     for item in parsed_data["inventory"]:
