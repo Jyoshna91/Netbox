@@ -153,5 +153,39 @@ try:
             # custom_fields['part_number'] = part_number
             # device.update({'custom_fields': custom_fields})
 
+        # Fetch and print cable details
+        print("Cable Details:")
+        interfaces = device.interfaces.all()
+        for interface in interfaces:
+            if interface.cable:
+                cable = interface.cable
+                print(f"Cable ID: {cable.id}")
+                print(f"Type: {cable.type}")
+                print(f"Status: {cable.status.label if cable.status else 'N/A'}")
+                print(f"Length: {cable.length} {cable.length_unit}")
+                print(f"Color: {cable.color}")
+                print(f"Label: {cable.label}")
+                print(f"Termination A: {cable.termination_a.device.name} - {cable.termination_a.name}")
+                print(f"Termination B: {cable.termination_b.device.name} - {cable.termination_b.name}")
+                print("-" * 30)
+
+        # Fetch and print console connections
+        print("Console Connections:")
+        console_ports = device.console_ports.all()
+        for port in console_ports:
+            if port.connected_endpoint:
+                print(f"Console Port: {port.device.name} - {port.name}")
+                print(f"Connected to: {port.connected_endpoint.device.name} - {port.connected_endpoint.name}")
+                print("-" * 30)
+
+        # Fetch and print power connections
+        print("Power Connections:")
+        power_ports = device.power_ports.all()
+        for port in power_ports:
+            if port.connected_endpoint:
+                print(f"Power Port: {port.device.name} - {port.name}")
+                print(f"Connected to: {port.connected_endpoint.device.name} - {port.connected_endpoint.name}")
+                print("-" * 30)
+
 except requests.exceptions.RequestException as e:
     print(f"Error connecting to the switch: {e}")
