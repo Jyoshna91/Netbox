@@ -21,7 +21,7 @@ headers = {
     "content-type": "application/json-rpc"
 }
 
-# Payloads to fetch hardware details, CPU details, memory details, and running configuration
+# Payloads to fetch hardware details, CPU details, and memory details
 inventory_payload = [
     {
         "jsonrpc": "2.0",
@@ -58,18 +58,6 @@ memory_payload = [
     }
 ]
 
-config_payload = [
-    {
-        "jsonrpc": "2.0",
-        "method": "cli",
-        "params": {
-            "cmd": "show running-config",
-            "version": 1
-        },
-        "id": 4
-    }
-]
-
 def fetch_data(payload):
     response = requests.post(nx_api_url, data=json.dumps(payload), headers=headers, auth=(switch_username, switch_password), verify=False)
     if response.status_code == 200:
@@ -82,8 +70,6 @@ try:
     # Fetch and print inventory details
     inventory_data = fetch_data(inventory_payload)
     if inventory_data:
-        print("Inventory Data:")
-        print(json.dumps(inventory_data, indent=4))
         inventory = inventory_data['result']['body']['TABLE_inv']['ROW_inv']
         print("Inventory Details:")
         print(json.dumps(inventory, indent=4))
@@ -91,8 +77,6 @@ try:
     # Fetch and print CPU details
     cpu_data = fetch_data(cpu_payload)
     if cpu_data:
-        print("CPU Data:")
-        print(json.dumps(cpu_data, indent=4))
         cpu_details = cpu_data['result']['body']
         print("CPU Details:")
         print(json.dumps(cpu_details, indent=4))
@@ -100,46 +84,26 @@ try:
     # Fetch and print memory details
     memory_data = fetch_data(memory_payload)
     if memory_data:
-        print("Memory Data:")
-        print(json.dumps(memory_data, indent=4))
         memory_details = memory_data['result']['body']
         print("Memory Details:")
         print(json.dumps(memory_details, indent=4))
-    
-    # Fetch and print running configuration details
-    config_data = fetch_data(config_payload)
-    if config_data:
-        print("Configuration Data:")
-        print(json.dumps(config_data, indent=4))
-        config_details = config_data['result']['body']
-        print("Running Configuration:")
-        print(config_details)
 
     # Connect to NetBox
     nb = pynetbox.api(netbox_url, token=netbox_token)
 
-    # Fetch the device details from NetBox
-    device_name = "Device"
+    # Debugging Step: Verify connection to NetBox
+    try:
+        nb.dcim.devices.all()
+        print("Successfully connected to NetBox.")
+    except Exception as e:
+        print(f"Failed to connect to NetBox: {e}")
+        exit(1)
+
+    # Update NetBox with the fetched hardware details
+    device_name = "Device"  # Replace with the actual device name in NetBox
     device = nb.dcim.devices.get(name=device_name)
 
     if device:
-        print(f"Device found in NetBox: {device.name}")
-        
-        # Fetch and print rack details
-        if device.rack:
-            rack_id = device.rack.id
-            rack = nb.dcim.racks.get(rack_id)
-            if rack:
-                print("Rack Details:")
-                print(f"Name: {rack.name}")
-                print(f"Facility ID: {rack.facility_id}")
-                print(f"Site: {rack.site.name}")
-                print(f"Tenant: {rack.tenant.name if rack.tenant else 'N/A'}")
-                print(f"Type: {rack.type.display if rack.type else 'N/A'}")
-                print(f"Width: {rack.width}")
-                print(f"Status: {rack.status.label if rack.status else 'N/A'}")
-
-        # Print inventory details from device
         for item in inventory:
             part_number = item.get('productid', 'N/A')
             serial_number = item.get('serialnum', 'N/A')
@@ -153,5 +117,25 @@ try:
             # custom_fields['part_number'] = part_number
             # device.update({'custom_fields': custom_fields})
 
+        # Fetch and print rack details
+        if device.rack:
+            rack_id = device.rack.id
+            rack = nb.dcim.racks.get(rack_id)
+            if rack:
+                print("Rack Details:")
+                print(f"Name: {rack.name}")
+                print(f"Facility ID: {rack.facility_id}")
+                print(f"Site: {rack.site.name}")
+                print(f"Tenant: {rack.tenant.name if rack.tenant else 'N/A'}")
+                print(f"Type: {rack.type.display if rack.type else 'N/A'}")
+                print(f"Width: {rack.width}")
+                print(f"Height: {rack.u_height}U")
+                print(f"Status: {rack.status.label if rack.status else 'N/A'}")
+                
+                # Calculate and print space utilization
+                occupied_units = sum([device.position for device in rack.devices if device.position])
+                available_units = rack.u_height - occupied_units
+                print(f"Occupied Units: {occupied_units}U")
+                print(f"Available Units: {available_units}U")
 except requests.exceptions.RequestException as e:
     print(f"Error connecting to the switch: {e}")
