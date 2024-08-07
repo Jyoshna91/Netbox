@@ -155,7 +155,7 @@ try:
 
         # Fetch and print cable details
         print("Cable Details:")
-        interfaces = device.interfaces.all()
+        interfaces = nb.dcim.interfaces.filter(device=device.id)
         for interface in interfaces:
             if interface.cable:
                 cable = interface.cable
@@ -171,7 +171,7 @@ try:
 
         # Fetch and print console connections
         print("Console Connections:")
-        console_ports = device.console_ports.all()
+        console_ports = nb.dcim.console_ports.filter(device=device.id)
         for port in console_ports:
             if port.connected_endpoint:
                 print(f"Console Port: {port.device.name} - {port.name}")
@@ -180,7 +180,7 @@ try:
 
         # Fetch and print power connections
         print("Power Connections:")
-        power_ports = device.power_ports.all()
+        power_ports = nb.dcim.power_ports.filter(device=device.id)
         for port in power_ports:
             if port.connected_endpoint:
                 print(f"Power Port: {port.device.name} - {port.name}")
