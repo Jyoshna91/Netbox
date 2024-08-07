@@ -1,191 +1,106 @@
-import requests
-import json
+import paramiko
 import pynetbox
-import urllib3
+import time
+import json
 
-# Suppress InsecureRequestWarning
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# Replace these variables with your switch's details and NetBox API details
-switch_ip = "10.133.35.148"
-switch_username = "admin"
-switch_password = "tcs123"
+# Replace these variables with your NetBox URL and API token
 netbox_url = "http://10.133.35.137:8000"
 netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
 
-# NX-API URL - ensure you're using the correct protocol (http or https)
-nx_api_url = f"https://{switch_ip}/ins"
+# Replace these variables with your switch's details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "123"
 
-# Headers for the NX-API request
-headers = {
-    "content-type": "application/json-rpc"
+# Connect to NetBox
+nb = pynetbox.api(netbox_url, token=netbox_token)
+
+def ssh_command(ip, username, password, command):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(ip, username=username, password=password)
+
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)
+    output = stdout.read().decode()
+    client.close()
+    return output
+
+# Define commands to run on the switch
+commands = {
+    "version": "show version",
+    "inventory": "show inventory",
+    "cpu": "show processes cpu",
+    "memory": "show system resources",
+    "config": "show running-config"
 }
 
-# Payloads to fetch hardware details, CPU details, memory details, and running configuration
-inventory_payload = [
-    {
-        "jsonrpc": "2.0",
-        "method": "cli",
-        "params": {
-            "cmd": "show inventory",
-            "version": 1
-        },
-        "id": 1
+# Run commands and collect data
+data = {}
+for key, command in commands.items():
+    data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
+    print(f"{key} data fetched successfully")
+
+# Print fetched data for debugging
+print("Fetched Data:")
+print(json.dumps(data, indent=4))
+
+# Function to parse version data (customize as per your command output)
+def parse_version(output):
+    # Custom parsing logic for the version command output
+    # Return parsed data as a dictionary
+    return {
+        "hostname": "Device",
+        "version": output.splitlines()[0]  # Example, customize as needed
     }
-]
 
-cpu_payload = [
-    {
-        "jsonrpc": "2.0",
-        "method": "cli",
-        "params": {
-            "cmd": "show processes cpu",
-            "version": 1
-        },
-        "id": 2
-    }
-]
+# Function to parse inventory data (customize as per your command output)
+def parse_inventory(output):
+    # Custom parsing logic for the inventory command output
+    # Return parsed data as a list of dictionaries
+    return [
+        {"part_number": "N9K-C9396PX", "serial_number": "SAL192736P3", "description": "Nexus9000 C9396PX Chassis"},
+        # Add more entries as needed
+    ]
 
-memory_payload = [
-    {
-        "jsonrpc": "2.0",
-        "method": "cli",
-        "params": {
-            "cmd": "show system resources",
-            "version": 1
-        },
-        "id": 3
-    }
-]
+# Parse the fetched data
+parsed_data = {
+    "version": parse_version(data["version"]),
+    "inventory": parse_inventory(data["inventory"]),
+    # Add more parsing functions as needed
+}
 
-config_payload = [
-    {
-        "jsonrpc": "2.0",
-        "method": "cli",
-        "params": {
-            "cmd": "show running-config",
-            "version": 1
-        },
-        "id": 4
-    }
-]
+# Print parsed data for debugging
+print("Parsed Data:")
+print(json.dumps(parsed_data, indent=4))
 
-def fetch_data(payload):
-    response = requests.post(nx_api_url, data=json.dumps(payload), headers=headers, auth=(switch_username, switch_password), verify=False)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Failed to fetch details: {response.status_code}")
-        return None
+# Add details to NetBox
+device_name = parsed_data["version"]["hostname"]
+device = nb.dcim.devices.get(name=device_name)
 
-try:
-    # Fetch and print inventory details
-    inventory_data = fetch_data(inventory_payload)
-    if inventory_data:
-        print("Inventory Data:")
-        print(json.dumps(inventory_data, indent=4))
-        inventory = inventory_data['result']['body']['TABLE_inv']['ROW_inv']
-        print("Inventory Details:")
-        print(json.dumps(inventory, indent=4))
+if device:
+    print(f"Device found in NetBox: {device.name}")
+
+    # Update device details with parsed data
+    # Example: Update device serial number and version
+    device.update({
+        "serial": parsed_data["inventory"][0]["serial_number"],
+        "custom_fields": {
+            "version": parsed_data["version"]["version"]
+        }
+    })
     
-    # Fetch and print CPU details
-    cpu_data = fetch_data(cpu_payload)
-    if cpu_data:
-        print("CPU Data:")
-        print(json.dumps(cpu_data, indent=4))
-        cpu_details = cpu_data['result']['body']
-        print("CPU Details:")
-        print(json.dumps(cpu_details, indent=4))
-    
-    # Fetch and print memory details
-    memory_data = fetch_data(memory_payload)
-    if memory_data:
-        print("Memory Data:")
-        print(json.dumps(memory_data, indent=4))
-        memory_details = memory_data['result']['body']
-        print("Memory Details:")
-        print(json.dumps(memory_details, indent=4))
-    
-    # Fetch and print running configuration details
-    config_data = fetch_data(config_payload)
-    if config_data:
-        print("Configuration Data:")
-        print(json.dumps(config_data, indent=4))
-        config_details = config_data['result']['body']
-        print("Running Configuration:")
-        print(config_details)
+    # Add inventory items
+    for item in parsed_data["inventory"]:
+        inventory_item = {
+            "device": device.id,
+            "name": item["description"],
+            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "part_id": item["part_number"],
+            "serial": item["serial_number"]
+        }
+        nb.dcim.inventory_items.create(inventory_item)
+        print(f"Inventory item {item['description']} added to NetBox")
 
-    # Connect to NetBox
-    nb = pynetbox.api(netbox_url, token=netbox_token)
-
-    # Fetch the device details from NetBox
-    device_name = "Device"
-    device = nb.dcim.devices.get(name=device_name)
-
-    if device:
-        print(f"Device found in NetBox: {device.name}")
-        
-        # Fetch and print rack details
-        if device.rack:
-            rack_id = device.rack.id
-            rack = nb.dcim.racks.get(rack_id)
-            if rack:
-                print("Rack Details:")
-                print(f"Name: {rack.name}")
-                print(f"Facility ID: {rack.facility_id}")
-                print(f"Site: {rack.site.name}")
-                print(f"Tenant: {rack.tenant.name if rack.tenant else 'N/A'}")
-                print(f"Type: {rack.type.display if rack.type else 'N/A'}")
-                print(f"Width: {rack.width}")
-                print(f"Status: {rack.status.label if rack.status else 'N/A'}")
-
-        # Print inventory details from device
-        for item in inventory:
-            part_number = item.get('productid', 'N/A')
-            serial_number = item.get('serialnum', 'N/A')
-            description = item.get('desc', 'N/A')
-
-            print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
-
-            # You can update custom fields or other attributes in NetBox as needed
-            # Example: Update a custom field
-            # custom_fields = device.custom_fields
-            # custom_fields['part_number'] = part_number
-            # device.update({'custom_fields': custom_fields})
-
-        # Fetch and print cable details
-        print("Cable Details:")
-        interfaces = nb.dcim.interfaces.filter(device=device.id)
-        for interface in interfaces:
-            if interface.cable:
-                cable = interface.cable
-                print(f"Cable ID: {cable.id}")
-                print(f"Type: {cable.type}")
-                print(f"Status: {cable.status.label if cable.status else 'N/A'}")
-                print(f"Length: {cable.length} {cable.length_unit}")
-                print(f"Color: {cable.color}")
-                print(f"Label: {cable.label}")
-                print(f"Termination A: {cable.termination_a.device.name} - {cable.termination_a.name}")
-                print(f"Termination B: {cable.termination_b.device.name} - {cable.termination_b.name}")
-                print("-" * 30)
-
-        # Fetch and print console connections
-        print("Console Connections:")
-        console_ports = nb.dcim.console_ports.filter(device=device.id)
-        for port in console_ports:
-            if port.connected_endpoint:
-                print(f"Console Port: {port.device.name} - {port.name}")
-                print(f"Connected to: {port.connected_endpoint.device.name} - {port.connected_endpoint.name}")
-                print("-" * 30)
-
-        # Fetch and print power connections
-        print("Power Connections:")
-        power_ports = nb.dcim.power_ports.filter(device=device.id)
-        for port in power_ports:
-            if port.connected_endpoint:
-                print(f"Power Port: {port.device.name} - {port.name}")
-                print(f"Connected to: {port.connected_endpoint.device.name} - {port.connected_endpoint.name}")
-                print("-" * 30)
-
-except requests.exceptions.RequestException as e:
-    print(f"Error connecting to the switch: {e}")
+else:
+    print(f"Device {device_name} not found in NetBox.")
