@@ -6,7 +6,7 @@ import pynetbox
 switch_ip = "10.133.35.148"
 username = "admin"
 password = "tcs123"
-netbox_url = "http://10.133.35.137:8000/api/"
+netbox_url = "http://10.133.35.137:8000"  # Notice the change here
 netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
 
 # NX-API URL
@@ -40,7 +40,8 @@ if response.status_code == 200:
     print(json.dumps(inventory, indent=4))
 
     # Connect to NetBox
-    nb = pynetbox.api(netbox_url, token=netbox_token, ssl_verify=False)
+    nb = pynetbox.api(netbox_url, token=netbox_token)
+    nb.http_session.verify = False
 
     # Update NetBox with the fetched hardware details
     device_name = "Device"
