@@ -1,0 +1,121 @@
+import requests
+import json
+import pynetbox
+import urllib3
+
+# Suppress InsecureRequestWarning
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Replace these variables with your switch's details and NetBox API details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "tcs123"
+netbox_url = "http://10.133.35.137:8000"  # Ensure this is the NetBox URL
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# NX-API URL - ensure you're using the correct protocol (http or https)
+nx_api_url = f"https://{switch_ip}/ins"
+
+# Headers for the NX-API request
+headers = {
+    "content-type": "application/json-rpc"
+}
+
+# Payload to fetch hardware details
+inventory_payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show inventory",
+            "version": 1
+        },
+        "id": 1
+    }
+]
+
+cpu_payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show processes cpu",
+            "version": 1
+        },
+        "id": 2
+    }
+]
+
+memory_payload = [
+    {
+        "jsonrpc": "2.0",
+        "method": "cli",
+        "params": {
+            "cmd": "show system resources",
+            "version": 1
+        },
+        "id": 3
+    }
+]
+
+def fetch_data(payload):
+    response = requests.post(nx_api_url, data=json.dumps(payload), headers=headers, auth=(switch_username, switch_password), verify=False)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        print(f"Failed to fetch details: {response.status_code}")
+        return None
+
+try:
+    # Fetch and print inventory details
+    inventory_data = fetch_data(inventory_payload)
+    if inventory_data:
+        inventory = inventory_data['result']['body']['TABLE_inv']['ROW_inv']
+        print("Inventory Details:")
+        print(json.dumps(inventory, indent=4))
+    
+    # Fetch and print CPU details
+    cpu_data = fetch_data(cpu_payload)
+    if cpu_data:
+        cpu_details = cpu_data['result']['body']
+        print("CPU Details:")
+        print(json.dumps(cpu_details, indent=4))
+    
+    # Fetch and print memory details
+    memory_data = fetch_data(memory_payload)
+    if memory_data:
+        memory_details = memory_data['result']['body']
+        print("Memory Details:")
+        print(json.dumps(memory_details, indent=4))
+
+    # Connect to NetBox
+    nb = pynetbox.api(netbox_url, token=netbox_token)
+
+    # Debugging Step: Verify connection to NetBox
+    try:
+        nb.dcim.devices.all()
+        print("Successfully connected to NetBox.")
+    except Exception as e:
+        print(f"Failed to connect to NetBox: {e}")
+        exit(1)
+
+    # Update NetBox with the fetched hardware details
+    device_name = "your_device_name_in_netbox"
+    device = nb.dcim.devices.get(name=device_name)
+
+    if device:
+        for item in inventory:
+            part_number = item.get('productid', 'N/A')
+            serial_number = item.get('serialnum', 'N/A')
+            description = item.get('desc', 'N/A')
+
+            print(f"Part Number: {part_number}, Serial Number: {serial_number}, Description: {description}")
+
+            # You can update custom fields or other attributes in NetBox as needed
+            # Example: Update a custom field
+            # custom_fields = device.custom_fields
+            # custom_fields['part_number'] = part_number
+            # device.update({'custom_fields': custom_fields})
+
+except requests.exceptions.RequestException as e:
+    print(f"Error connecting to the switch: {e}")
