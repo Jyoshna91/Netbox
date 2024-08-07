@@ -1,0 +1,69 @@
+tcs@tcs-HP-Compaq-Elite-8300-SFF:~/opt/netbox/netbox$ python3 Netbox_test1.py 
+/usr/lib/python3/dist-packages/urllib3/connectionpool.py:1100: InsecureRequestWarning: Unverified HTTPS request is being made to host '10.133.35.148'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#tls-warnings
+  warnings.warn(
+[
+    {
+        "name": "\"Chassis\"",
+        "desc": "\"Nexus9000 C9396PX Chassis\"",
+        "productid": "N9K-C9396PX",
+        "vendorid": "V02",
+        "serialnum": "SAL1927J6P3"
+    },
+    {
+        "name": "\"Slot 1\"",
+        "desc": "\"1/10G SFP+ Ethernet Module\"",
+        "productid": "N9K-C9396PX",
+        "vendorid": "V02",
+        "serialnum": "SAL1927J6P3"
+    },
+    {
+        "name": "\"Slot 2\"",
+        "desc": "\"40G Ethernet Expansion Module\"",
+        "productid": "N9K-M12PQ",
+        "vendorid": "V01",
+        "serialnum": "SAL1926J4K1"
+    },
+    {
+        "name": "\"Power Supply 1\"",
+        "desc": "\"Nexus9000 C9396PX Chassis Power Supply\"",
+        "productid": "N9K-PAC-650W",
+        "vendorid": "V01",
+        "serialnum": "DCB1927X0DZ"
+    },
+    {
+        "name": "\"Power Supply 2\"",
+        "desc": "\"Nexus9000 C9396PX Chassis Power Supply\"",
+        "productid": "N9K-PAC-650W",
+        "vendorid": "V01",
+        "serialnum": "DCB1927X0E1"
+    },
+    {
+        "name": "\"Fan 1\"",
+        "desc": "\"Nexus9000 C9396PX Chassis Fan Module\"",
+        "productid": "N9K-C9300-FAN2",
+        "vendorid": "V01",
+        "serialnum": "N/A"
+    },
+    {
+        "name": "\"Fan 2\"",
+        "desc": "\"Nexus9000 C9396PX Chassis Fan Module\"",
+        "productid": "N9K-C9300-FAN2",
+        "vendorid": "V01",
+        "serialnum": "N/A"
+    },
+    {
+        "name": "\"Fan 3\"",
+        "desc": "\"Nexus9000 C9396PX Chassis Fan Module\"",
+        "productid": "N9K-C9300-FAN2",
+        "vendorid": "V01",
+        "serialnum": "N/A"
+    }
+]
+Part Number: N9K-C9396PX, Serial Number: SAL1927J6P3, Description: "Nexus9000 C9396PX Chassis"
+Part Number: N9K-C9396PX, Serial Number: SAL1927J6P3, Description: "1/10G SFP+ Ethernet Module"
+Part Number: N9K-M12PQ, Serial Number: SAL1926J4K1, Description: "40G Ethernet Expansion Module"
+Part Number: N9K-PAC-650W, Serial Number: DCB1927X0DZ, Description: "Nexus9000 C9396PX Chassis Power Supply"
+Part Number: N9K-PAC-650W, Serial Number: DCB1927X0E1, Description: "Nexus9000 C9396PX Chassis Power Supply"
+Part Number: N9K-C9300-FAN2, Serial Number: N/A, Description: "Nexus9000 C9396PX Chassis Fan Module"
+Part Number: N9K-C9300-FAN2, Serial Number: N/A, Description: "Nexus9000 C9396PX Chassis Fan Module"
+Part Number: N9K-C9300-FAN2, Serial Number: N/A, Description: "Nexus9000 C9396PX Chassis Fan Module"
