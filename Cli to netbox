@@ -47,21 +47,16 @@ print(json.dumps(data, indent=4))
 
 # Function to parse version data (customize as per your command output)
 def parse_version(output):
-    version_info = {}
+    version_info = {"NXOS": ""}
     for line in output.splitlines():
         if "NXOS:" in line:
             version_info["NXOS"] = line.split("NXOS:")[-1].strip()
-        elif "uptime" in line:
-            version_info["hostname"] = line.split()[0]
-        elif "Model number" in line:
-            version_info["model"] = line.split(":")[1].strip()
-        elif "System serial number" in line:
-            version_info["SN"] = line.split(":")[1].strip()
     return version_info
 
 # Function to parse inventory data (customize as per your command output)
 def parse_inventory(output):
     inventory_items = []
+    version_info = {"SN": ""}
     current_item = {}
     for line in output.splitlines():
         if "NAME:" in line:
@@ -72,14 +67,17 @@ def parse_inventory(output):
             current_item["part_number"] = line.split()[1]
         elif "SN:" in line:
             current_item["serial_number"] = line.split()[1]
+            if not version_info["SN"]:
+                version_info["SN"] = line.split()[1]  # Save the first found serial number as SN
     if current_item:
         inventory_items.append(current_item)
-    return inventory_items
+    return inventory_items, version_info
 
 # Parse the fetched data
+inventory_data, version_info = parse_inventory(data["inventory"])
 parsed_data = {
-    "version": parse_version(data["version"]),
-    "inventory": parse_inventory(data["inventory"]),
+    "version": {**parse_version(data["version"]), **version_info},
+    "inventory": inventory_data,
     # Add more parsing functions as needed
 }
 
@@ -88,7 +86,7 @@ print("Parsed Data:")
 print(json.dumps(parsed_data, indent=4))
 
 # Add or update device details in NetBox
-device_name = parsed_data["version"]["hostname"]
+device_name = "n9k1"  # Use the specific device name you mentioned
 device = nb.dcim.devices.get(name=device_name)
 
 # Example of manufacturer and device type IDs (you should replace these with actual IDs from your NetBox)
@@ -103,7 +101,7 @@ if not device:
         device_type=device_type_id,
         site=1,  # Replace with the actual site ID
         serial=parsed_data["version"].get("SN", "N/A"),
-        custom_fields={"version": parsed_data["version"].get("NXOS", "N/A")}
+        custom_fields={"NXOS": parsed_data["version"].get("NXOS", "N/A")}
     )
     print(f"Device {device_name} created in NetBox.")
 
@@ -115,8 +113,10 @@ if device:
     custom_field_names = [cf.name for cf in custom_fields]
 
     custom_field_updates = {}
-    if "version" in custom_field_names:
-        custom_field_updates["version"] = parsed_data["version"].get("NXOS", "N/A")
+    if "NXOS" in custom_field_names:
+        custom_field_updates["NXOS"] = parsed_data["version"].get("NXOS", "N/A")
+    if "SN" in custom_field_names:
+        custom_field_updates["SN"] = parsed_data["version"].get("SN", "N/A")
 
     # Update device details with parsed data
     update_data = {
