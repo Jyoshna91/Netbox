@@ -47,21 +47,30 @@ print(json.dumps(data, indent=4))
 
 # Function to parse version data (customize as per your command output)
 def parse_version(output):
-    # Custom parsing logic for the version command output
-    # Return parsed data as a dictionary
-    return {
-        "hostname": "Device",
-        "version": output.splitlines()[0]  # Example, customize as needed
-    }
+    version_info = {}
+    for line in output.splitlines():
+        if "NXOS:" in line:
+            version_info["version"] = line.split("NXOS:")[-1].strip()
+        elif "uptime" in line:
+            version_info["hostname"] = line.split()[0]
+    return version_info
 
 # Function to parse inventory data (customize as per your command output)
 def parse_inventory(output):
-    # Custom parsing logic for the inventory command output
-    # Return parsed data as a list of dictionaries
-    return [
-        {"part_number": "N9K-C9396PX", "serial_number": "SAL192736P3", "description": "Nexus9000 C9396PX Chassis"},
-        # Add more entries as needed
-    ]
+    inventory_items = []
+    current_item = {}
+    for line in output.splitlines():
+        if "NAME:" in line:
+            if current_item:
+                inventory_items.append(current_item)
+            current_item = {"description": line.split('"')[1]}
+        elif "PID:" in line:
+            current_item["part_number"] = line.split()[1]
+        elif "SN:" in line:
+            current_item["serial_number"] = line.split()[1]
+    if current_item:
+        inventory_items.append(current_item)
+    return inventory_items
 
 # Parse the fetched data
 parsed_data = {
