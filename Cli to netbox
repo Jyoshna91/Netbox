@@ -1,83 +1,114 @@
-To fetch details of a connected Nexus switch from another Nexus switch using NetBox, you typically follow these steps:
+import paramiko
+import pynetbox
+import time
+import json
 
-1. **Ensure NetBox API Access**: Verify you have access to the NetBox API and the required permissions.
+# Replace these variables with your NetBox URL and API token
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
 
-2. **Identify Target Device**: Determine the device you want to query and its identifier in NetBox.
+# Replace these variables with your switch's details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "tcs123"
 
-3. **Install Required Libraries**: Ensure you have Python and necessary libraries like `requests` installed.
+# Connect to NetBox
+nb = pynetbox.api(netbox_url, token=netbox_token)
 
-4. **Write a Python Script**: Use a Python script to interact with the NetBox API and fetch details.
+def ssh_command(ip, username, password, command):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(ip, username=username, password=password)
 
-Here's a basic example:
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)
+    output = stdout.read().decode()
+    client.close()
+    return output
 
-### Step 1: Set Up Environment
-
-Install the `requests` library if you haven't:
-
-```sh
-pip install requests
-```
-
-### Step 2: Python Script
-
-```python
-import requests
-
-# Define NetBox API URL and token
-netbox_url = 'http://your-netbox-url/api/'
-token = 'your-api-token'
-headers = {
-    'Authorization': f'Token {token}',
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+# Define commands to run on the switch
+commands = {
+    "version": "show version",
+    "inventory": "show inventory",
+    "cpu": "show processes cpu",
+    "memory": "show system resources",
+    "config": "show running-config"
 }
 
-# Function to fetch device details
-def get_device_details(device_name):
-    response = requests.get(f'{netbox_url}dcim/devices/?name={device_name}', headers=headers)
-    if response.status_code == 200:
-        devices = response.json()
-        if devices['results']:
-            return devices['results'][0]
-        else:
-            print(f"Device {device_name} not found.")
-            return None
-    else:
-        print(f"Failed to fetch device details. Status code: {response.status_code}")
-        return None
+# Run commands and collect data
+data = {}
+for key, command in commands.items():
+    data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
+    print(f"{key} data fetched successfully")
 
-# Function to fetch connected interfaces
-def get_connected_interfaces(device_id):
-    response = requests.get(f'{netbox_url}dcim/interfaces/?device_id={device_id}', headers=headers)
-    if response.status_code == 200:
-        interfaces = response.json()['results']
-        connected_interfaces = []
-        for interface in interfaces:
-            if interface['connected_endpoint']:
-                connected_interfaces.append(interface)
-        return connected_interfaces
-    else:
-        print(f"Failed to fetch interfaces. Status code: {response.status_code}")
-        return []
+# Print fetched data for debugging
+print("Fetched Data:")
+print(json.dumps(data, indent=4))
 
-# Example usage
-device_name = 'Your-Nexus-Switch-Name'
-device_details = get_device_details(device_name)
-if device_details:
-    print(f"Device details: {device_details}")
-    connected_interfaces = get_connected_interfaces(device_details['id'])
-    print(f"Connected interfaces: {connected_interfaces}")
-```
+# Function to parse version data (customize as per your command output)
+def parse_version(output):
+    # Custom parsing logic for the version command output
+    # Return parsed data as a dictionary
+    return {
+        "hostname": "Device",
+        "version": output.splitlines()[0]  # Example, customize as needed
+    }
 
-### Step 3: Run the Script
+# Function to parse inventory data (customize as per your command output)
+def parse_inventory(output):
+    # Custom parsing logic for the inventory command output
+    # Return parsed data as a list of dictionaries
+    return [
+        {"part_number": "N9K-C9396PX", "serial_number": "SAL192736P3", "description": "Nexus9000 C9396PX Chassis"},
+        # Add more entries as needed
+    ]
 
-Save the script and run it. It will fetch the details of the specified Nexus switch and print out its connected interfaces.
+# Parse the fetched data
+parsed_data = {
+    "version": parse_version(data["version"]),
+    "inventory": parse_inventory(data["inventory"]),
+    # Add more parsing functions as needed
+}
 
-### Explanation
+# Print parsed data for debugging
+print("Parsed Data:")
+print(json.dumps(parsed_data, indent=4))
 
-- **API URL and Token**: Replace `your-netbox-url` with your NetBox instance URL and `your-api-token` with your NetBox API token.
-- **`get_device_details` Function**: Fetches device details from NetBox by name.
-- **`get_connected_interfaces` Function**: Fetches interfaces of the device and filters those which are connected to another endpoint.
-- **Example Usage**: Replace `'Your-Nexus-Switch-Name'` with the name of your Nexus switch.
+# Add details to NetBox
+device_name = parsed_data["version"]["hostname"]
+device = nb.dcim.devices.get(name=device_name)
 
-This script provides a basic framework. Depending on your specific requirements and NetBox configuration, you might need to adjust the API endpoints or add additional error handling.
+if device:
+    print(f"Device found in NetBox: {device.name}")
+
+    # Ensure custom fields exist before updating
+    custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
+    custom_field_names = [cf.name for cf in custom_fields]
+
+    custom_field_updates = {}
+    if "version" in custom_field_names:
+        custom_field_updates["version"] = parsed_data["version"]["version"]
+
+    # Update device details with parsed data
+    update_data = {
+        "serial": parsed_data["inventory"][0]["serial_number"],
+    }
+    if custom_field_updates:
+        update_data["custom_fields"] = custom_field_updates
+
+    device.update(update_data)
+    
+    # Add inventory items
+    for item in parsed_data["inventory"]:
+        inventory_item = {
+            "device": device.id,
+            "name": item["description"],
+            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "part_id": item["part_number"],
+            "serial": item["serial_number"]
+        }
+        nb.dcim.inventory_items.create(inventory_item)
+        print(f"Inventory item {item['description']} added to NetBox")
+
+else:
+    print(f"Device {device_name} not found in NetBox.")
