@@ -125,21 +125,27 @@ if not device_type:
         "slug": device_type_slug
     })
 
+# Ensure the site exists
+site_name = "site1"
+site = nb.dcim.sites.get(name=site_name)
+if not site:
+    site = nb.dcim.sites.create({
+        "name": site_name,
+        "slug": site_name.lower()
+    })
+
+# Ensure the device role exists
+device_role_name = "Switch"
+device_role = nb.dcim.device_roles.get(name=device_role_name)
+if not device_role:
+    device_role = nb.dcim.device_roles.create({
+        "name": device_role_name,
+        "slug": device_role_name.lower()
+    })
+
 # Create or update the device
 device = nb.dcim.devices.get(name=device_name)
 if not device:
-    device_role = nb.dcim.device_roles.get(name="Switch")
-    if not device_role:
-        device_role = nb.dcim.device_roles.create({
-            "name": "Switch",
-            "slug": "switch"
-        })
-    site = nb.dcim.sites.get(name="site1")
-    if not site:
-        site = nb.dcim.sites.create({
-            "name": "site1",
-            "slug": "site1"
-        })
     device = nb.dcim.devices.create({
         "name": device_name,
         "device_type": device_type.id,
