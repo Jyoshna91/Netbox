@@ -126,7 +126,7 @@ if not device_type:
     })
 
 # Ensure the site exists
-site_name = "site1"
+site_name = "site2"
 site = nb.dcim.sites.get(name=site_name)
 if not site:
     site = nb.dcim.sites.create({
