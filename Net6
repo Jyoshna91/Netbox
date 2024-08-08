@@ -97,31 +97,167 @@ if device:
     custom_field_updates = {}
     if "version" in custom_field_names:
         custom_field_updates["version"] = parsed_data["version"]["version"]
-    if "cpu_usage" in custom_field_names:
-        custom_field_updates["cpu_usage"] = parsed_data["cpu"]["cpu_usage"]
-    if "memory_usage" in custom_field_names:
-        custom_field_updates["memory_usage"] = parsed_data["memory"]["memory_usage"]
+    if 
 
-    # Update device details with parsed data
-    update_data = {
-        "serial": parsed_data["inventory"][0]["serial_number"],
-    }
-    if custom_field_updates:
-        update_data["custom_fields"] = custom_field_updates
+_-----------
 
-    device.update(update_data)
-    
-    # Add inventory items
-    for item in parsed_data["inventory"]:
-        inventory_item = {
-            "device": device.id,
-            "name": item["description"],
-            "manufacturer": 1,  # Replace with actual manufacturer ID
-            "part_id": item["part_number"],
-            "serial": item["serial_number"]
-        }
-        nb.dcim.inventory_items.create(inventory_item)
-        print(f"Inventory item {item['description']} added to NetBox")
+import paramiko
+import pynetbox
+import time
+import json
 
+# Replace these variables with your NetBox URL and API token
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# Replace these variables with your switch's details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "123"
+
+# Connect to NetBox
+nb = pynetbox.api(netbox_url, token=netbox_token)
+
+def ssh_command(ip, username, password, command):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(ip, username=username, password=password)
+
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)
+    output = stdout.read().decode()
+    client.close()
+    return output
+
+# Define commands to run on the switch
+commands = {
+    "version": "show version",
+    "inventory": "show inventory",
+    "cpu": "show processes cpu",
+    "memory": "show system resources",
+    "config": "show running-config"
+}
+
+# Run commands and collect data
+data = {}
+for key, command in commands.items():
+    try:
+        data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
+        print(f"{key} data fetched successfully")
+    except Exception as e:
+        print(f"Failed to fetch {key} data: {e}")
+
+# Print fetched data for debugging
+print("Fetched Data:")
+print(json.dumps(data, indent=4))
+
+# Parsing functions
+def parse_version(output):
+    try:
+        # Customize as needed
+        lines = output.splitlines()
+        hostname = lines[0].split()[1]  # Example: assuming hostname is in the first line
+        version = lines[1].split()[-1]  # Example: assuming version is in the second line
+        return {"hostname": hostname, "version": version}
+    except Exception as e:
+        print(f"Failed to parse version data: {e}")
+        return {}
+
+def parse_inventory(output):
+    try:
+        # Customize as needed
+        inventory = []
+        lines = output.splitlines()
+        for line in lines:
+            parts = line.split()
+            part_number = parts[0]
+            serial_number = parts[1]
+            description = ' '.join(parts[2:])
+            inventory.append({"part_number": part_number, "serial_number": serial_number, "description": description})
+        return inventory
+    except Exception as e:
+        print(f"Failed to parse inventory data: {e}")
+        return []
+
+def parse_cpu(output):
+    try:
+        # Customize as needed
+        lines = output.splitlines()
+        cpu_usage = lines[1]  # Example: assuming CPU usage is in the second line
+        return {"cpu_usage": cpu_usage}
+    except Exception as e:
+        print(f"Failed to parse CPU data: {e}")
+        return {}
+
+def parse_memory(output):
+    try:
+        # Customize as needed
+        lines = output.splitlines()
+        memory_usage = lines[1]  # Example: assuming memory usage is in the second line
+        return {"memory_usage": memory_usage}
+    except Exception as e:
+        print(f"Failed to parse memory data: {e}")
+        return {}
+
+# Parse the fetched data
+parsed_data = {
+    "version": parse_version(data.get("version", "")),
+    "inventory": parse_inventory(data.get("inventory", "")),
+    "cpu": parse_cpu(data.get("cpu", "")),
+    "memory": parse_memory(data.get("memory", ""))
+}
+
+# Print parsed data for debugging
+print("Parsed Data:")
+print(json.dumps(parsed_data, indent=4))
+
+# Add details to NetBox
+device_name = parsed_data["version"].get("hostname")
+if not device_name:
+    print("Hostname not found in parsed version data.")
 else:
-    print(f"Device {device_name} not found in NetBox.")
+    device = nb.dcim.devices.get(name=device_name)
+    if device:
+        print(f"Device found in NetBox: {device.name}")
+
+        # Ensure custom fields exist before updating
+        custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
+        custom_field_names = [cf.name for cf in custom_fields]
+
+        custom_field_updates = {}
+        if "version" in custom_field_names:
+            custom_field_updates["version"] = parsed_data["version"].get("version")
+        if "cpu_usage" in custom_field_names:
+            custom_field_updates["cpu_usage"] = parsed_data["cpu"].get("cpu_usage")
+        if "memory_usage" in custom_field_names:
+            custom_field_updates["memory_usage"] = parsed_data["memory"].get("memory_usage")
+
+        # Update device details with parsed data
+        update_data = {
+            "serial": parsed_data["inventory"][0]["serial_number"] if parsed_data["inventory"] else None,
+        }
+        if custom_field_updates:
+            update_data["custom_fields"] = custom_field_updates
+
+        try:
+            device.update(update_data)
+            print(f"Device {device.name} updated successfully.")
+        except Exception as e:
+            print(f"Failed to update device {device.name}: {e}")
+
+        # Add inventory items
+        for item in parsed_data["inventory"]:
+            inventory_item = {
+                "device": device.id,
+                "name": item["description"],
+                "manufacturer": 1,  # Replace with actual manufacturer ID
+                "part_id": item["part_number"],
+                "serial": item["serial_number"]
+            }
+            try:
+                nb.dcim.inventory_items.create(inventory_item)
+                print(f"Inventory item {item['description']} added to NetBox")
+            except Exception as e:
+                print(f"Failed to add inventory item {item['description']}: {e}")
+    else:
+        print(f"Device {device_name} not found in NetBox.")
