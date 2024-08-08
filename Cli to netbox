@@ -50,13 +50,13 @@ def parse_version(output):
     version_info = {}
     for line in output.splitlines():
         if "NXOS:" in line:
-            version_info["version"] = line.split("NXOS:")[-1].strip()
+            version_info["NXOS"] = line.split("NXOS:")[-1].strip()
         elif "uptime" in line:
             version_info["hostname"] = line.split()[0]
         elif "Model number" in line:
             version_info["model"] = line.split(":")[1].strip()
         elif "System serial number" in line:
-            version_info["serial_number"] = line.split(":")[1].strip()
+            version_info["SN"] = line.split(":")[1].strip()
     return version_info
 
 # Function to parse inventory data (customize as per your command output)
@@ -102,8 +102,8 @@ if not device:
         device_role=1,  # Replace with the actual device role ID
         device_type=device_type_id,
         site=1,  # Replace with the actual site ID
-        serial=parsed_data["version"]["serial_number"],
-        custom_fields={"version": parsed_data["version"]["version"]}
+        serial=parsed_data["version"].get("SN", "N/A"),
+        custom_fields={"version": parsed_data["version"].get("NXOS", "N/A")}
     )
     print(f"Device {device_name} created in NetBox.")
 
@@ -116,11 +116,11 @@ if device:
 
     custom_field_updates = {}
     if "version" in custom_field_names:
-        custom_field_updates["version"] = parsed_data["version"]["version"]
+        custom_field_updates["version"] = parsed_data["version"].get("NXOS", "N/A")
 
     # Update device details with parsed data
     update_data = {
-        "serial": parsed_data["version"]["serial_number"],
+        "serial": parsed_data["version"].get("SN", "N/A"),
         "device_type": device_type_id,
         "manufacturer": manufacturer_id,
         "custom_fields": custom_field_updates
