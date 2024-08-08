@@ -53,6 +53,10 @@ def parse_version(output):
             version_info["version"] = line.split("NXOS:")[-1].strip()
         elif "uptime" in line:
             version_info["hostname"] = line.split()[0]
+        elif "Model number" in line:
+            version_info["model"] = line.split(":")[1].strip()
+        elif "System serial number" in line:
+            version_info["serial_number"] = line.split(":")[1].strip()
     return version_info
 
 # Function to parse inventory data (customize as per your command output)
@@ -83,9 +87,25 @@ parsed_data = {
 print("Parsed Data:")
 print(json.dumps(parsed_data, indent=4))
 
-# Add details to NetBox
+# Add or update device details in NetBox
 device_name = parsed_data["version"]["hostname"]
 device = nb.dcim.devices.get(name=device_name)
+
+# Example of manufacturer and device type IDs (you should replace these with actual IDs from your NetBox)
+manufacturer_id = 1  # Replace with the actual manufacturer ID in your NetBox
+device_type_id = 1   # Replace with the actual device type ID in your NetBox
+
+if not device:
+    # If the device does not exist, create it
+    device = nb.dcim.devices.create(
+        name=device_name,
+        device_role=1,  # Replace with the actual device role ID
+        device_type=device_type_id,
+        site=1,  # Replace with the actual site ID
+        serial=parsed_data["version"]["serial_number"],
+        custom_fields={"version": parsed_data["version"]["version"]}
+    )
+    print(f"Device {device_name} created in NetBox.")
 
 if device:
     print(f"Device found in NetBox: {device.name}")
@@ -100,11 +120,11 @@ if device:
 
     # Update device details with parsed data
     update_data = {
-        "serial": parsed_data["inventory"][0]["serial_number"],
+        "serial": parsed_data["version"]["serial_number"],
+        "device_type": device_type_id,
+        "manufacturer": manufacturer_id,
+        "custom_fields": custom_field_updates
     }
-    if custom_field_updates:
-        update_data["custom_fields"] = custom_field_updates
-
     device.update(update_data)
     
     # Add inventory items
@@ -112,7 +132,7 @@ if device:
         inventory_item = {
             "device": device.id,
             "name": item["description"],
-            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "manufacturer": manufacturer_id,  # Replace with actual manufacturer ID
             "part_id": item["part_number"],
             "serial": item["serial_number"]
         }
