@@ -1,217 +1,83 @@
-import paramiko
-import pynetbox
-import time
-import json
+To fetch details of a connected Nexus switch from another Nexus switch using NetBox, you typically follow these steps:
 
-# Replace these variables with your NetBox URL and API token
-netbox_url = "http://10.133.35.137:8000"
-netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+1. **Ensure NetBox API Access**: Verify you have access to the NetBox API and the required permissions.
 
-# Replace these variables with your switch's details
-switch_ip = "10.133.35.148"
-switch_username = "admin"
-switch_password = "123"
+2. **Identify Target Device**: Determine the device you want to query and its identifier in NetBox.
 
-# Connect to NetBox
-nb = pynetbox.api(netbox_url, token=netbox_token)
+3. **Install Required Libraries**: Ensure you have Python and necessary libraries like `requests` installed.
 
-def ssh_command(ip, username, password, command):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(ip, username=username, password=password)
+4. **Write a Python Script**: Use a Python script to interact with the NetBox API and fetch details.
 
-    stdin, stdout, stderr = client.exec_command(command)
-    time.sleep(2)
-    output = stdout.read().decode()
-    client.close()
-    return output
+Here's a basic example:
 
-# Define commands to run on the switch
-commands = {
-    "version": "show version",
-    "inventory": "show inventory",
-    "cpu": "show processes cpu",
-    "memory": "show system resources",
-    "config": "show running-config",
-    "interfaces": "show ip interface brief"
+### Step 1: Set Up Environment
+
+Install the `requests` library if you haven't:
+
+```sh
+pip install requests
+```
+
+### Step 2: Python Script
+
+```python
+import requests
+
+# Define NetBox API URL and token
+netbox_url = 'http://your-netbox-url/api/'
+token = 'your-api-token'
+headers = {
+    'Authorization': f'Token {token}',
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
 }
 
-# Run commands and collect data
-data = {}
-for key, command in commands.items():
-    data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
-    print(f"{key} data fetched successfully")
+# Function to fetch device details
+def get_device_details(device_name):
+    response = requests.get(f'{netbox_url}dcim/devices/?name={device_name}', headers=headers)
+    if response.status_code == 200:
+        devices = response.json()
+        if devices['results']:
+            return devices['results'][0]
+        else:
+            print(f"Device {device_name} not found.")
+            return None
+    else:
+        print(f"Failed to fetch device details. Status code: {response.status_code}")
+        return None
 
-# Print fetched data for debugging
-print("Fetched Data:")
-print(json.dumps(data, indent=4))
+# Function to fetch connected interfaces
+def get_connected_interfaces(device_id):
+    response = requests.get(f'{netbox_url}dcim/interfaces/?device_id={device_id}', headers=headers)
+    if response.status_code == 200:
+        interfaces = response.json()['results']
+        connected_interfaces = []
+        for interface in interfaces:
+            if interface['connected_endpoint']:
+                connected_interfaces.append(interface)
+        return connected_interfaces
+    else:
+        print(f"Failed to fetch interfaces. Status code: {response.status_code}")
+        return []
 
-# Function to parse version data
-def parse_version(output):
-    version_info = {}
-    for line in output.splitlines():
-        if "Cisco Nexus Operating System" in line:
-            version_info["version"] = line.strip()
-        elif "uptime" in line:
-            version_info["hostname"] = line.split()[0]
-        elif "Model number" in line:
-            version_info["model"] = line.split(":")[1].strip()
-        elif "System serial number" in line:
-            version_info["serial_number"] = line.split(":")[1].strip()
-    return version_info
+# Example usage
+device_name = 'Your-Nexus-Switch-Name'
+device_details = get_device_details(device_name)
+if device_details:
+    print(f"Device details: {device_details}")
+    connected_interfaces = get_connected_interfaces(device_details['id'])
+    print(f"Connected interfaces: {connected_interfaces}")
+```
 
-# Function to parse inventory data
-def parse_inventory(output):
-    inventory_items = []
-    current_item = {}
-    for line in output.splitlines():
-        if "NAME:" in line:
-            if current_item:
-                inventory_items.append(current_item)
-            current_item = {"description": line.split('"')[1]}
-        elif "PID:" in line:
-            current_item["part_number"] = line.split()[1]
-        elif "SN:" in line:
-            current_item["serial_number"] = line.split()[1]
-    if current_item:
-        inventory_items.append(current_item)
-    return inventory_items
+### Step 3: Run the Script
 
-# Function to parse interface data
-def parse_interfaces(output):
-    interfaces = []
-    for line in output.splitlines()[1:]:  # Skip the header
-        if line:
-            parts = line.split()
-            interface = {
-                "name": parts[0],
-                "ip_address": parts[1],
-                "status": parts[4]
-            }
-            interfaces.append(interface)
-    return interfaces
+Save the script and run it. It will fetch the details of the specified Nexus switch and print out its connected interfaces.
 
-# Parse the fetched data
-parsed_data = {
-    "version": parse_version(data["version"]),
-    "inventory": parse_inventory(data["inventory"]),
-    "cpu": data["cpu"].strip(),
-    "memory": data["memory"].strip(),
-    "config": data["config"].strip(),
-    "interfaces": parse_interfaces(data["interfaces"])
-}
+### Explanation
 
-# Print parsed data for debugging
-print("Parsed Data:")
-print(json.dumps(parsed_data, indent=4))
+- **API URL and Token**: Replace `your-netbox-url` with your NetBox instance URL and `your-api-token` with your NetBox API token.
+- **`get_device_details` Function**: Fetches device details from NetBox by name.
+- **`get_connected_interfaces` Function**: Fetches interfaces of the device and filters those which are connected to another endpoint.
+- **Example Usage**: Replace `'Your-Nexus-Switch-Name'` with the name of your Nexus switch.
 
-# Extract details for NetBox
-device_name = parsed_data["version"].get("hostname", "Unknown")
-device_model = parsed_data["version"].get("model", "Unknown")
-device_serial = parsed_data["version"].get("serial_number", "Unknown")
-device_type_slug = device_model.lower().replace(" ", "-")
-manufacturer_name = "Cisco"  # Example manufacturer, customize as needed
-
-# Create or update the manufacturer
-manufacturer = nb.dcim.manufacturers.get(name=manufacturer_name)
-if not manufacturer:
-    manufacturer = nb.dcim.manufacturers.create({
-        "name": manufacturer_name,
-        "slug": manufacturer_name.lower()
-    })
-
-# Create or update the device type
-device_type = nb.dcim.device_types.get(model=device_model)
-if not device_type:
-    device_type = nb.dcim.device_types.create({
-        "model": device_model,
-        "manufacturer": manufacturer.id,
-        "slug": device_type_slug
-    })
-
-# Ensure the site exists
-site_name = "site2"
-site = nb.dcim.sites.get(name=site_name)
-if not site:
-    site = nb.dcim.sites.create({
-        "name": site_name,
-        "slug": site_name.lower()
-    })
-
-# Ensure the device role exists
-device_role_name = "Switch"
-device_role = nb.dcim.device_roles.get(name=device_role_name)
-if not device_role:
-    device_role = nb.dcim.device_roles.create({
-        "name": device_role_name,
-        "slug": device_role_name.lower()
-    })
-
-# Create or update the device
-device = nb.dcim.devices.get(name=device_name)
-if not device:
-    device = nb.dcim.devices.create({
-        "name": device_name,
-        "device_type": device_type.id,
-        "device_role": device_role.id,
-        "site": site.id,
-        "serial": device_serial,
-        "status": "active",
-    })
-    print(f"Device {device_name} created successfully in NetBox.")
-else:
-    print(f"Device {device_name} already exists in NetBox.")
-
-# Update device details with parsed data
-if device:
-    custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
-    custom_field_names = [cf.name for cf in custom_fields]
-
-    custom_field_updates = {}
-    if "version" in custom_field_names:
-        custom_field_updates["version"] = parsed_data["version"]["version"]
-
-    update_data = {
-        "serial": device_serial,
-        "custom_fields": custom_field_updates
-    }
-
-    print("Update Data:")
-    print(json.dumps(update_data, indent=4))
-
-    try:
-        device.update(update_data)
-        print("Device updated successfully.")
-    except Exception as e:
-        print(f"Error updating device: {e}")
-
-    # Add inventory items
-    for item in parsed_data["inventory"]:
-        inventory_item = {
-            "device": device.id,
-            "name": item["description"],
-            "manufacturer": manufacturer.id,
-            "part_id": item["part_number"],
-            "serial": item["serial_number"]
-        }
-        try:
-            nb.dcim.inventory_items.create(inventory_item)
-            print(f"Inventory item {item['description']} added to NetBox")
-        except Exception as e:
-            print(f"Error adding inventory item {item['description']}: {e}")
-
-    # Add interfaces
-    for iface in parsed_data["interfaces"]:
-        interface = {
-            "device": device.id,
-            "name": iface["name"],
-            "type": "10base-t",  # Interface type set to 10base-t
-            "enabled": iface["status"].lower() == "up",
-        }
-        try:
-            nb.dcim.interfaces.create(interface)
-            print(f"Interface {iface['name']} added to NetBox")
-        except Exception as e:
-            print(f"Error adding interface {iface['name']}: {e}")
-else:
-    print(f"Device {device_name} not found in NetBox and could not be created.")
+This script provides a basic framework. Depending on your specific requirements and NetBox configuration, you might need to adjust the API endpoints or add additional error handling.
