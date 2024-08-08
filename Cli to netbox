@@ -1,0 +1,167 @@
+import paramiko
+import pynetbox
+import time
+import json
+
+# Replace these variables with your NetBox URL and API token
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# Replace these variables with your switch's details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "123"
+
+# Connect to NetBox
+nb = pynetbox.api(netbox_url, token=netbox_token)
+
+def ssh_command(ip, username, password, command):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(ip, username=username, password=password)
+
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)
+    output = stdout.read().decode()
+    client.close()
+    return output
+
+# Define commands to run on the switch
+commands = {
+    "version": "show version",
+    "inventory": "show inventory",
+    "cpu": "show processes cpu",
+    "memory": "show system resources",
+    "config": "show running-config"
+}
+
+# Run commands and collect data
+data = {}
+for key, command in commands.items():
+    data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
+    print(f"{key} data fetched successfully")
+
+# Print fetched data for debugging
+print("Fetched Data:")
+print(json.dumps(data, indent=4))
+
+# Function to parse version data (customize as per your command output)
+def parse_version(output):
+    version_info = {}
+    for line in output.splitlines():
+        if "Cisco Nexus Operating System" in line:
+            version_info["version"] = line.strip()
+        elif "uptime" in line:
+            version_info["hostname"] = line.split()[0]
+    return version_info
+
+# Function to parse inventory data (customize as per your command output)
+def parse_inventory(output):
+    inventory_items = []
+    current_item = {}
+    for line in output.splitlines():
+        if "NAME:" in line:
+            if current_item:
+                inventory_items.append(current_item)
+            current_item = {"description": line.split('"')[1]}
+        elif "PID:" in line:
+            current_item["part_number"] = line.split()[1]
+        elif "SN:" in line:
+            current_item["serial_number"] = line.split()[1]
+    if current_item:
+        inventory_items.append(current_item)
+    return inventory_items
+
+# Function to parse CPU data (customize as per your command output)
+def parse_cpu(output):
+    return {"cpu_info": output.strip()}  # Customize as per actual output
+
+# Function to parse memory data (customize as per your command output)
+def parse_memory(output):
+    return {"memory_info": output.strip()}  # Customize as per actual output
+
+# Function to parse running config data (customize as per your command output)
+def parse_config(output):
+    return {"running_config": output.strip()}  # Customize as per actual output
+
+# Parse the fetched data
+parsed_data = {
+    "version": parse_version(data["version"]),
+    "inventory": parse_inventory(data["inventory"]),
+    "cpu": parse_cpu(data["cpu"]),
+    "memory": parse_memory(data["memory"]),
+    "config": parse_config(data["config"]),
+}
+
+# Print parsed data for debugging
+print("Parsed Data:")
+print(json.dumps(parsed_data, indent=4))
+
+# Create or update the device in NetBox
+device_name = parsed_data["version"].get("hostname", "Unknown")
+device_type = "Nexus9000"  # Example, customize as needed
+site_id = 1  # Replace with your actual site ID
+device_role_id = 1  # Replace with your actual device role ID
+
+# Find or create the device type
+device_type_obj = nb.dcim.device_types.get(model=device_type)
+if not device_type_obj:
+    manufacturer = 1  # Replace with the actual manufacturer ID
+    device_type_obj = nb.dcim.device_types.create({
+        "model": device_type,
+        "manufacturer": manufacturer,
+        "slug": device_type.lower(),
+    })
+
+# Create the device if it doesn't exist
+device = nb.dcim.devices.get(name=device_name)
+if not device:
+    device = nb.dcim.devices.create({
+        "name": device_name,
+        "device_type": device_type_obj.id,
+        "device_role": device_role_id,
+        "site": site_id,
+        "serial": parsed_data["inventory"][0]["serial_number"] if parsed_data["inventory"] else "Unknown",
+        "status": "active",
+    })
+    print(f"Device {device_name} created successfully in NetBox.")
+
+# Update device details with parsed data
+if device:
+    custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
+    custom_field_names = [cf.name for cf in custom_fields]
+
+    custom_field_updates = {}
+    if "version" in custom_field_names:
+        custom_field_updates["version"] = parsed_data["version"]["version"]
+
+    update_data = {
+        "serial": parsed_data["inventory"][0]["serial_number"] if parsed_data["inventory"] else device.serial,
+        "custom_fields": custom_field_updates
+    }
+
+    print("Update Data:")
+    print(json.dumps(update_data, indent=4))
+
+    try:
+        device.update(update_data)
+        print("Device updated successfully.")
+    except Exception as e:
+        print(f"Error updating device: {e}")
+
+    # Add inventory items
+    for item in parsed_data["inventory"]:
+        inventory_item = {
+            "device": device.id,
+            "name": item["description"],
+            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "part_id": item["part_number"],
+            "serial": item["serial_number"]
+        }
+        try:
+            nb.dcim.inventory_items.create(inventory_item)
+            print(f"Inventory item {item['description']} added to NetBox")
+        except Exception as e:
+            print(f"Error adding inventory item {item['description']}: {e}")
+else:
+    print(f"Device {device_name} not found in NetBox and could not be created.")
