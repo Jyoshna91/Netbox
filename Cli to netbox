@@ -47,34 +47,21 @@ print(json.dumps(data, indent=4))
 
 # Function to parse version data (customize as per your command output)
 def parse_version(output):
-    version_info = {}
-    for line in output.splitlines():
-        if "NXOS:" in line:  # Adjust this based on the actual output of your `show version`
-            version_info["version"] = line.split("NXOS:")[-1].strip()
-        elif "uptime" in line:
-            version_info["hostname"] = line.split()[0]
-        elif "Model number" in line:
-            version_info["model"] = line.split(":")[1].strip()
-        elif "System serial number" in line:
-            version_info["serial_number"] = line.split(":")[1].strip()
-    return version_info
+    # Custom parsing logic for the version command output
+    # Return parsed data as a dictionary
+    return {
+        "hostname": "Device",
+        "version": output.splitlines()[0]  # Example, customize as needed
+    }
 
 # Function to parse inventory data (customize as per your command output)
 def parse_inventory(output):
-    inventory_items = []
-    current_item = {}
-    for line in output.splitlines():
-        if "NAME:" in line:
-            if current_item:
-                inventory_items.append(current_item)
-            current_item = {"description": line.split('"')[1]}
-        elif "PID:" in line:
-            current_item["part_number"] = line.split()[1]
-        elif "SN:" in line:
-            current_item["serial_number"] = line.split()[1]
-    if current_item:
-        inventory_items.append(current_item)
-    return inventory_items
+    # Custom parsing logic for the inventory command output
+    # Return parsed data as a list of dictionaries
+    return [
+        {"part_number": "N9K-C9396PX", "serial_number": "SAL192736P3", "description": "Nexus9000 C9396PX Chassis"},
+        # Add more entries as needed
+    ]
 
 # Parse the fetched data
 parsed_data = {
@@ -98,16 +85,9 @@ if device:
     custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
     custom_field_names = [cf.name for cf in custom_fields]
 
-    # Debugging: print the custom fields
-    print("Custom Fields in NetBox:")
-    for cf in custom_fields:
-        print(f"{cf.name}: {cf.type}")
-
     custom_field_updates = {}
     if "version" in custom_field_names:
         custom_field_updates["version"] = parsed_data["version"]["version"]
-    else:
-        print("Custom field 'version' does not exist in NetBox")
 
     # Update device details with parsed data
     update_data = {
@@ -116,15 +96,8 @@ if device:
     if custom_field_updates:
         update_data["custom_fields"] = custom_field_updates
 
-    print("Update Data:")
-    print(json.dumps(update_data, indent=4))
-
-    try:
-        device.update(update_data)
-        print("Device updated successfully.")
-    except Exception as e:
-        print(f"Error updating device: {e}")
-
+    device.update(update_data)
+    
     # Add inventory items
     for item in parsed_data["inventory"]:
         inventory_item = {
@@ -134,11 +107,8 @@ if device:
             "part_id": item["part_number"],
             "serial": item["serial_number"]
         }
-        try:
-            nb.dcim.inventory_items.create(inventory_item)
-            print(f"Inventory item {item['description']} added to NetBox")
-        except Exception as e:
-            print(f"Error adding inventory item {item['description']}: {e}")
+        nb.dcim.inventory_items.create(inventory_item)
+        print(f"Inventory item {item['description']} added to NetBox")
 
 else:
     print(f"Device {device_name} not found in NetBox.")
