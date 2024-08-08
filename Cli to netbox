@@ -53,6 +53,10 @@ def parse_version(output):
             version_info["version"] = line.strip()
         elif "uptime" in line:
             version_info["hostname"] = line.split()[0]
+        elif "Model number" in line:
+            version_info["model"] = line.split(":")[1].strip()
+        elif "System serial number" in line:
+            version_info["serial_number"] = line.split(":")[1].strip()
     return version_info
 
 # Function to parse inventory data (customize as per your command output)
@@ -97,31 +101,51 @@ parsed_data = {
 print("Parsed Data:")
 print(json.dumps(parsed_data, indent=4))
 
-# Create or update the device in NetBox
+# Extract details for NetBox
 device_name = parsed_data["version"].get("hostname", "Unknown")
-device_type = "Nexus9000"  # Example, customize as needed
-site_id = 1  # Replace with your actual site ID
-device_role_id = 1  # Replace with your actual device role ID
+device_model = parsed_data["version"].get("model", "Unknown")
+device_serial = parsed_data["version"].get("serial_number", "Unknown")
+device_type_slug = device_model.lower().replace(" ", "-")
+manufacturer_name = "Cisco"  # Example manufacturer, customize as needed
 
-# Find or create the device type
-device_type_obj = nb.dcim.device_types.get(model=device_type)
-if not device_type_obj:
-    manufacturer = 1  # Replace with the actual manufacturer ID
-    device_type_obj = nb.dcim.device_types.create({
-        "model": device_type,
-        "manufacturer": manufacturer,
-        "slug": device_type.lower(),
+# Create or update the manufacturer
+manufacturer = nb.dcim.manufacturers.get(name=manufacturer_name)
+if not manufacturer:
+    manufacturer = nb.dcim.manufacturers.create({
+        "name": manufacturer_name,
+        "slug": manufacturer_name.lower()
     })
 
-# Create the device if it doesn't exist
+# Create or update the device type
+device_type = nb.dcim.device_types.get(model=device_model)
+if not device_type:
+    device_type = nb.dcim.device_types.create({
+        "model": device_model,
+        "manufacturer": manufacturer.id,
+        "slug": device_type_slug
+    })
+
+# Create or update the device
 device = nb.dcim.devices.get(name=device_name)
 if not device:
+    device_role = nb.dcim.device_roles.get(name="Switch")
+    if not device_role:
+        device_role = nb.dcim.device_roles.create({
+            "name": "Switch",
+            "slug": "switch"
+        })
+    site = nb.dcim.sites.get(name="site1")
+    if not site:
+        site = nb.dcim.sites.create({
+            "name": "site1",
+            "slug": "site1"
+        })
     device = nb.dcim.devices.create({
         "name": device_name,
-        "device_type": device_type_obj.id,
-        "device_role": device_role_id,
-        "site": site_id,
-        "serial": parsed_data["inventory"][0]["serial_number"] if parsed_data["inventory"] else "Unknown",
+        "device_type": device_type.id,
+        "device_role": device_role.id,
+        "site": site.id,
+        "serial": device_serial,
         "status": "active",
     })
     print(f"Device {device_name} created successfully in NetBox.")
@@ -136,7 +160,7 @@ if device:
         custom_field_updates["version"] = parsed_data["version"]["version"]
 
     update_data = {
-        "serial": parsed_data["inventory"][0]["serial_number"] if parsed_data["inventory"] else device.serial,
+        "serial": device_serial,
         "custom_fields": custom_field_updates
     }
 
@@ -154,7 +178,7 @@ if device:
         inventory_item = {
             "device": device.id,
             "name": item["description"],
-            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "manufacturer": manufacturer.id,
             "part_id": item["part_number"],
             "serial": item["serial_number"]
         }
