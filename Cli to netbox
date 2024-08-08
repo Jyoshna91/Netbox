@@ -85,9 +85,16 @@ if device:
     custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
     custom_field_names = [cf.name for cf in custom_fields]
 
+    # Debugging: print the custom fields
+    print("Custom Fields in NetBox:")
+    for cf in custom_fields:
+        print(f"{cf.name}: {cf.type}")
+
     custom_field_updates = {}
     if "version" in custom_field_names:
         custom_field_updates["version"] = parsed_data["version"]["version"]
+    else:
+        print("Custom field 'version' does not exist in NetBox")
 
     # Update device details with parsed data
     update_data = {
@@ -96,8 +103,15 @@ if device:
     if custom_field_updates:
         update_data["custom_fields"] = custom_field_updates
 
-    device.update(update_data)
-    
+    print("Update Data:")
+    print(json.dumps(update_data, indent=4))
+
+    try:
+        device.update(update_data)
+        print("Device updated successfully.")
+    except Exception as e:
+        print(f"Error updating device: {e}")
+
     # Add inventory items
     for item in parsed_data["inventory"]:
         inventory_item = {
@@ -107,8 +121,11 @@ if device:
             "part_id": item["part_number"],
             "serial": item["serial_number"]
         }
-        nb.dcim.inventory_items.create(inventory_item)
-        print(f"Inventory item {item['description']} added to NetBox")
+        try:
+            nb.dcim.inventory_items.create(inventory_item)
+            print(f"Inventory item {item['description']} added to NetBox")
+        except Exception as e:
+            print(f"Error adding inventory item {item['description']}: {e}")
 
 else:
     print(f"Device {device_name} not found in NetBox.")
