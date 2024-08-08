@@ -32,7 +32,8 @@ commands = {
     "inventory": "show inventory",
     "cpu": "show processes cpu",
     "memory": "show system resources",
-    "config": "show running-config"
+    "config": "show running-config",
+    "interfaces": "show ip interface brief"
 }
 
 # Run commands and collect data
@@ -45,7 +46,7 @@ for key, command in commands.items():
 print("Fetched Data:")
 print(json.dumps(data, indent=4))
 
-# Function to parse version data (customize as per your command output)
+# Function to parse version data
 def parse_version(output):
     version_info = {}
     for line in output.splitlines():
@@ -59,7 +60,7 @@ def parse_version(output):
             version_info["serial_number"] = line.split(":")[1].strip()
     return version_info
 
-# Function to parse inventory data (customize as per your command output)
+# Function to parse inventory data
 def parse_inventory(output):
     inventory_items = []
     current_item = {}
@@ -76,25 +77,28 @@ def parse_inventory(output):
         inventory_items.append(current_item)
     return inventory_items
 
-# Function to parse CPU data (customize as per your command output)
-def parse_cpu(output):
-    return {"cpu_info": output.strip()}  # Customize as per actual output
-
-# Function to parse memory data (customize as per your command output)
-def parse_memory(output):
-    return {"memory_info": output.strip()}  # Customize as per actual output
-
-# Function to parse running config data (customize as per your command output)
-def parse_config(output):
-    return {"running_config": output.strip()}  # Customize as per actual output
+# Function to parse interface data
+def parse_interfaces(output):
+    interfaces = []
+    for line in output.splitlines()[1:]:  # Skip the header
+        if line:
+            parts = line.split()
+            interface = {
+                "name": parts[0],
+                "ip_address": parts[1],
+                "status": parts[4]
+            }
+            interfaces.append(interface)
+    return interfaces
 
 # Parse the fetched data
 parsed_data = {
     "version": parse_version(data["version"]),
     "inventory": parse_inventory(data["inventory"]),
-    "cpu": parse_cpu(data["cpu"]),
-    "memory": parse_memory(data["memory"]),
-    "config": parse_config(data["config"]),
+    "cpu": data["cpu"].strip(),
+    "memory": data["memory"].strip(),
+    "config": data["config"].strip(),
+    "interfaces": parse_interfaces(data["interfaces"])
 }
 
 # Print parsed data for debugging
@@ -126,7 +130,7 @@ if not device_type:
     })
 
 # Ensure the site exists
-site_name = "site1"
+site_name = "site2"
 site = nb.dcim.sites.get(name=site_name)
 if not site:
     site = nb.dcim.sites.create({
@@ -195,5 +199,19 @@ if device:
             print(f"Inventory item {item['description']} added to NetBox")
         except Exception as e:
             print(f"Error adding inventory item {item['description']}: {e}")
+
+    # Add interfaces
+    for iface in parsed_data["interfaces"]:
+        interface = {
+            "device": device.id,
+            "name": iface["name"],
+            "type": "10base-t",  # Interface type set to 10base-t
+            "enabled": iface["status"].lower() == "up",
+        }
+        try:
+            nb.dcim.interfaces.create(interface)
+            print(f"Interface {iface['name']} added to NetBox")
+        except Exception as e:
+            print(f"Error adding interface {iface['name']}: {e}")
 else:
     print(f"Device {device_name} not found in NetBox and could not be created.")
