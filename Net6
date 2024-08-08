@@ -1,0 +1,127 @@
+import paramiko
+import pynetbox
+import time
+import json
+
+# Replace these variables with your NetBox URL and API token
+netbox_url = "http://10.133.35.137:8000"
+netbox_token = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# Replace these variables with your switch's details
+switch_ip = "10.133.35.148"
+switch_username = "admin"
+switch_password = "123"
+
+# Connect to NetBox
+nb = pynetbox.api(netbox_url, token=netbox_token)
+
+def ssh_command(ip, username, password, command):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(ip, username=username, password=password)
+
+    stdin, stdout, stderr = client.exec_command(command)
+    time.sleep(2)
+    output = stdout.read().decode()
+    client.close()
+    return output
+
+# Define commands to run on the switch
+commands = {
+    "version": "show version",
+    "inventory": "show inventory",
+    "cpu": "show processes cpu",
+    "memory": "show system resources",
+    "config": "show running-config"
+}
+
+# Run commands and collect data
+data = {}
+for key, command in commands.items():
+    data[key] = ssh_command(switch_ip, switch_username, switch_password, command)
+    print(f"{key} data fetched successfully")
+
+# Print fetched data for debugging
+print("Fetched Data:")
+print(json.dumps(data, indent=4))
+
+# Parsing functions
+def parse_version(output):
+    return {
+        "hostname": "Device",  # Example, customize as needed
+        "version": output.splitlines()[0]  # Example, customize as needed
+    }
+
+def parse_inventory(output):
+    # Custom parsing logic for the inventory command output
+    return [
+        {"part_number": "N9K-C9396PX", "serial_number": "SAL192736P3", "description": "Nexus9000 C9396PX Chassis"},
+        # Add more entries as needed
+    ]
+
+def parse_cpu(output):
+    # Custom parsing logic for the CPU command output
+    return {
+        "cpu_usage": output.splitlines()[1]  # Example, customize as needed
+    }
+
+def parse_memory(output):
+    # Custom parsing logic for the memory command output
+    return {
+        "memory_usage": output.splitlines()[1]  # Example, customize as needed
+    }
+
+# Parse the fetched data
+parsed_data = {
+    "version": parse_version(data["version"]),
+    "inventory": parse_inventory(data["inventory"]),
+    "cpu": parse_cpu(data["cpu"]),
+    "memory": parse_memory(data["memory"]),
+}
+
+# Print parsed data for debugging
+print("Parsed Data:")
+print(json.dumps(parsed_data, indent=4))
+
+# Add details to NetBox
+device_name = parsed_data["version"]["hostname"]
+device = nb.dcim.devices.get(name=device_name)
+
+if device:
+    print(f"Device found in NetBox: {device.name}")
+
+    # Ensure custom fields exist before updating
+    custom_fields = nb.extras.custom_fields.filter(content_types="dcim.device")
+    custom_field_names = [cf.name for cf in custom_fields]
+
+    custom_field_updates = {}
+    if "version" in custom_field_names:
+        custom_field_updates["version"] = parsed_data["version"]["version"]
+    if "cpu_usage" in custom_field_names:
+        custom_field_updates["cpu_usage"] = parsed_data["cpu"]["cpu_usage"]
+    if "memory_usage" in custom_field_names:
+        custom_field_updates["memory_usage"] = parsed_data["memory"]["memory_usage"]
+
+    # Update device details with parsed data
+    update_data = {
+        "serial": parsed_data["inventory"][0]["serial_number"],
+    }
+    if custom_field_updates:
+        update_data["custom_fields"] = custom_field_updates
+
+    device.update(update_data)
+    
+    # Add inventory items
+    for item in parsed_data["inventory"]:
+        inventory_item = {
+            "device": device.id,
+            "name": item["description"],
+            "manufacturer": 1,  # Replace with actual manufacturer ID
+            "part_id": item["part_number"],
+            "serial": item["serial_number"]
+        }
+        nb.dcim.inventory_items.create(inventory_item)
+        print(f"Inventory item {item['description']} added to NetBox")
+
+else:
+    print(f"Device {device_name} not found in NetBox.")
