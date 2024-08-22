@@ -1,0 +1,51 @@
+import paramiko
+import pynetbox
+
+# Router connection details
+router_ip = "10.133.35.147"
+username = "admin"
+password = "tcs123"
+
+# NetBox API connection details
+NETBOX_URL = "http://your-netbox-instance"  # Replace with your NetBox URL
+NETBOX_TOKEN = "your-netbox-api-token"      # Replace with your NetBox API token
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Connect to the router using SSH
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh_client.connect(router_ip, username=username, password=password)
+
+# Execute the command to get power details
+stdin, stdout, stderr = ssh_client.exec_command("show environment power")
+output = stdout.read().decode()
+
+# Process the output to extract relevant power details
+# This is an example; you may need to adjust parsing based on your actual output format
+power_details = {}
+lines = output.splitlines()
+for line in lines:
+    if "System power consumption" in line:
+        power_details['consumption'] = line.split(":")[-1].strip()
+    elif "Voltage" in line:
+        power_details['voltage'] = line.split(":")[-1].strip()
+
+# Close the SSH connection
+ssh_client.close()
+
+# Update NetBox with the extracted power details
+# Example: Update power information for a specific device in NetBox
+device_name = "YourRouterName"  # Replace with the actual device name in NetBox
+device = nb.dcim.devices.get(name=device_name)
+
+if device:
+    power_ports = nb.dcim.power_ports.filter(device_id=device.id)
+    for port in power_ports:
+        # Example: Update power draw and voltage
+        port.update({
+            "allocated_draw": power_details.get('consumption', 0),  # Update with actual power draw
+            "maximum_draw": power_details.get('voltage', 0)  # Update with voltage or another metric
+        })
+    print(f"Updated power details for {device_name} in NetBox.")
+else:
+    print(f"Device {device_name} not found in NetBox.")
