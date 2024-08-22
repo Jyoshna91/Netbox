@@ -49,3 +49,95 @@ if device:
     print(f"Updated power details for {device_name} in NetBox.")
 else:
     print(f"Device {device_name} not found in NetBox.")
+
+
+
+
+
+
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 203, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/usr/lib/python3/dist-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+ConnectionRefusedError: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 791, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 497, in _make_request
+    conn.request(
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 395, in request
+    self.endheaders()
+  File "/usr/lib/python3.12/http/client.py", line 1331, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/usr/lib/python3.12/http/client.py", line 1091, in _send_output
+    self.send(msg)
+  File "/usr/lib/python3.12/http/client.py", line 1035, in send
+    self.connect()
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 243, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connection.py", line 218, in _new_conn
+    raise NewConnectionError(
+urllib3.exceptions.NewConnectionError: <urllib3.connection.HTTPConnection object at 0x79da46b0d160>: Failed to establish a new connection: [Errno 111] Connection refused
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 486, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/connectionpool.py", line 845, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/urllib3/util/retry.py", line 515, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='10.133.35.148', port=8000): Max retries exceeded with url: /api/dcim/devices/?name=Device&limit=0 (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x79da46b0d160>: Failed to establish a new connection: [Errno 111] Connection refused'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/tcs/opt/netbox/netbox/device_netbox.py", line 39, in <module>
+    device = nb.dcim.devices.get(name=device_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pynetbox/core/endpoint.py", line 148, in get
+    ret = next(resp, None)
+          ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pynetbox/core/response.py", line 117, in __next__
+    next(self.response), self.endpoint.api, self.endpoint
+    ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pynetbox/core/query.py", line 317, in get
+    req = self._make_call(add_params=add_params)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/pynetbox/core/query.py", line 267, in _make_call
+    req = getattr(self.http_session, verb)(
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 602, in get
+    return self.request("GET", url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3/dist-packages/requests/adapters.py", line 519, in send
+    raise ConnectionError(e, request=request)
+requests.exceptions.ConnectionError: HTTPConnectionPool(host='10.133.35.148', port=8000): Max retries exceeded with url: /api/dcim/devices/?name=Device&limit=0 (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x79da46b0d160>: Failed to establish a new connection: [Errno 111] Connection refused'))
+Exception ignored in: <function BufferedFile.__del__ at 0x79da47dd5760>
+Traceback (most recent call last):
+  File "/home/tcs/.local/lib/python3.12/site-packages/paramiko/file.py", line 67, in __del__
+  File "/home/tcs/.local/lib/python3.12/site-packages/paramiko/channel.py", line 1390, in close
+  File "/home/tcs/.local/lib/python3.12/site-packages/paramiko/channel.py", line 989, in shutdown_write
+  File "/home/tcs/.local/lib/python3.12/site-packages/paramiko/channel.py", line 965, in shutdown
+  File "/home/tcs/.local/lib/python3.12/site-packages/paramiko/transport.py", line 1936, in _send_user_message
+AttributeError: 'NoneType' object has no attribute 'time'
