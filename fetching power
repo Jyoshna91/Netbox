@@ -1,0 +1,32 @@
+import pynetbox
+
+# NetBox API connection details
+NETBOX_URL = "http://10.133.35.137:8000"
+NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Fetch Nexus switches (you can adjust this filter to match your environment)
+nexus_switches = nb.dcim.devices.filter(device_type="Nexus9000")
+
+for switch in nexus_switches:
+    print(f"Device Name: {switch.name}")
+    if switch.rack:
+        print(f"Rack: {switch.rack.name}")
+        print(f"Rack Position: U{switch.position} (Front)")
+
+        # Rack space utilization
+        rack = nb.dcim.racks.get(switch.rack.id)
+        print(f"Total Rack Units: {rack.u_height}")
+        used_units = sum(device.u_height for device in rack.devices.all())
+        print(f"Used Rack Units: {used_units}")
+
+    # Fetch power utilization
+    power_ports = switch.power_ports.all()
+    total_power = 0
+    for port in power_ports:
+        # Assuming power rating is in watts (W) and available via custom fields or similar
+        if port.power_draw:
+            total_power += port.power_draw
+        print(f"  Power Port: {port.name}, Power Draw: {port.power_draw} W")
+
+    print(f"Total Power Draw: {total_power} W\n")
