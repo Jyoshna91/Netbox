@@ -31,26 +31,34 @@ try:
     lines = output.splitlines()
     for line in lines:
         if "Total Power Output (actual draw)" in line:
-            power_details['output'] = line.split(":")[-1].strip().split()[0]  # Extract the value
+            power_details['output'] = float(line.split(":")[-1].strip().split()[0])  # Extract the value
         elif "Total Power Input (actual draw)" in line:
-            power_details['input'] = line.split(":")[-1].strip().split()[0]   # Extract the value
-        elif "Voltage" in line:
-            power_details['voltage'] = line.split(":")[-1].strip().split()[0] # Extract the voltage
+            power_details['input'] = float(line.split(":")[-1].strip().split()[0])   # Extract the value
+        elif "Total Power Capacity" in line:
+            power_details['capacity'] = float(line.split(":")[-1].strip().split()[0]) # Capacity value in Watts
 
     # Close the SSH connection
     ssh_client.close()
+
+    # Calculate power utilization percentage
+    actual_draw = power_details.get('output', 0)
+    total_capacity = power_details.get('capacity', 0)
+    if total_capacity > 0:
+        utilization_percentage = (actual_draw / total_capacity) * 100
+    else:
+        utilization_percentage = 0  # Avoid division by zero
 
     # Retrieve the power feed in NetBox
     power_feed = nb.dcim.power_feeds.get(name=power_feed_name)
 
     if power_feed:
-        # Update the power feed with the new details
+        # Update the power feed with the new utilization details
         power_feed.update({
-            "allocated_draw": power_details.get('output', 0),  # Actual power draw in Watts
-            "maximum_draw": power_details.get('input', 0),     # Maximum input in Watts
-            "voltage": power_details.get('voltage', 0),        # Voltage in Volts
+            "allocated_draw": actual_draw,  # Actual power draw in Watts
+            "maximum_draw": total_capacity, # Maximum capacity in Watts
+            "max_utilization": utilization_percentage  # Utilization percentage
         })
-        print(f"Updated power feed {power_feed_name} in NetBox.")
+        print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage:.2f}%.")
     else:
         print(f"Power feed {power_feed_name} not found in NetBox.")
 
