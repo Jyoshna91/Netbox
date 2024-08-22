@@ -26,16 +26,28 @@ try:
     stdin, stdout, stderr = ssh_client.exec_command("show environment power")
     output = stdout.read().decode()
 
+    # Debug print the output to inspect the format
+    print("Command Output:\n", output)
+
     # Process the output to extract relevant power details
     power_details = {}
     lines = output.splitlines()
     for line in lines:
         if "Total Power Output (actual draw)" in line:
-            power_details['output'] = float(line.split(":")[-1].strip().split()[0])  # Extract the value
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))  # Extract only the numeric part
+            print(f"Extracted Power Output: {value}")
+            power_details['output'] = float(value)  # Convert to float
         elif "Total Power Input (actual draw)" in line:
-            power_details['input'] = float(line.split(":")[-1].strip().split()[0])   # Extract the value
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Input: {value}")
+            power_details['input'] = float(value)
         elif "Total Power Capacity" in line:
-            power_details['capacity'] = float(line.split(":")[-1].strip().split()[0]) # Capacity value in Watts
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Capacity: {value}")
+            power_details['capacity'] = float(value)
 
     # Close the SSH connection
     ssh_client.close()
