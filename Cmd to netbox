@@ -1,4 +1,3 @@
-
 import paramiko
 import pynetbox
 
@@ -15,6 +14,9 @@ nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 # Power feed name in NetBox that you want to update
 power_feed_name = "POWER1"  # Replace with the actual name of the power feed
 
+# Rack name in NetBox that you want to update with the utilization details
+rack_name = "Rack1"  # Replace with the actual name of the rack
+
 # Initialize SSH client
 ssh_client = paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -27,6 +29,7 @@ try:
     stdin, stdout, stderr = ssh_client.exec_command("show environment power")
     output = stdout.read().decode()
     stdin.close()
+
     # Debug print the output to inspect the format
     print("Command Output:\n", output)
 
@@ -61,20 +64,31 @@ try:
     else:
         utilization_percentage = 0  # Avoid division by zero
 
-    # Retrieve the power feed in NetBox
+    # Print the utilization percentage for debugging
+    print(f"Calculated Power Utilization: {utilization_percentage:.2f}%")
+
+    # Retrieve the power feed in NetBox and update it (optional)
     power_feed = nb.dcim.power_feeds.get(name=power_feed_name)
 
     if power_feed:
-        # Update the power feed with the new utilization details
         power_feed.update({
-           "allocated_draw": actual_draw,  # Actual power draw in Watts
-           "maximum_draw": total_capacity, # Maximum capacity in Watts
-           "Max Utilization": utilization_percentage  # Utilization percentage
-           #"voltage": voltage
+            "allocated_draw": actual_draw,  # Actual power draw in Watts
+            "maximum_draw": total_capacity, # Maximum capacity in Watts
+            "max_utilization": utilization_percentage  # Utilization percentage
         })
         print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage:.2f}%.")
+
+    # Now, update the rack details with this utilization
+    rack = nb.dcim.racks.get(name=rack_name)
+    if rack:
+        rack.update({
+            "custom_fields": {
+                "power_utilization": utilization_percentage  # Assuming there's a custom field for power utilization
+            }
+        })
+        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage:.2f}%.")
     else:
-        print(f"Power feed {power_feed_name} not found in NetBox.")
+        print(f"Rack {rack_name} not found in NetBox.")
 
 except Exception as e:
     print(f"An error occurred: {e}")
