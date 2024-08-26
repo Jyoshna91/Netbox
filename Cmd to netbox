@@ -1,14 +1,15 @@
+
 import paramiko
 import pynetbox
 
 # Router connection details
-router_ip = "10.133.35.147"
+router_ip = "10.133.35.148"
 username = "admin"
 password = "tcs123"
 
 # NetBox API connection details
-NETBOX_URL = "http://10.133.35.148:8000"  # Ensure this is correct
-NETBOX_TOKEN = "your-netbox-api-token"    # Replace with your actual NetBox API token
+NETBOX_URL = "http://10.133.35.137:8000"  # Ensure this is correct
+NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"    # Replace with your actual NetBox API token
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
 # Power feed name in NetBox that you want to update
@@ -25,7 +26,7 @@ try:
     # Execute the command to get power details
     stdin, stdout, stderr = ssh_client.exec_command("show environment power")
     output = stdout.read().decode()
-
+    stdin.close()
     # Debug print the output to inspect the format
     print("Command Output:\n", output)
 
@@ -66,9 +67,10 @@ try:
     if power_feed:
         # Update the power feed with the new utilization details
         power_feed.update({
-            "allocated_draw": actual_draw,  # Actual power draw in Watts
-            "maximum_draw": total_capacity, # Maximum capacity in Watts
-            "max_utilization": utilization_percentage  # Utilization percentage
+           "allocated_draw": actual_draw,  # Actual power draw in Watts
+           "maximum_draw": total_capacity, # Maximum capacity in Watts
+           "Max Utilization": utilization_percentage  # Utilization percentage
+           #"voltage": voltage
         })
         print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage:.2f}%.")
     else:
