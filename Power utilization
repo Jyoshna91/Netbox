@@ -1,28 +1,27 @@
 import paramiko
 import pynetbox
 
-# Router connection details
+# Network device connection details
 router_ip = "10.133.35.148"
 username = "admin"
 password = "tcs123"
 
 # NetBox API connection details
-NETBOX_URL = "http://10.133.35.137:8000"  # Ensure this is correct
-NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"    # Replace with your actual NetBox API token
+NETBOX_URL = "http://10.133.35.137:8000"
+NETBOX_TOKEN = "your_netbox_api_token"  # Replace with your actual NetBox API token
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-# Power feed name in NetBox that you want to update
-power_feed_name = "POWER1"  # Replace with the actual name of the power feed
-
-# Rack name in NetBox that you want to update with the utilization details
-rack_name = "Rack1"  # Replace with the actual name of the rack
+# Power feed details
+power_feed_name = "Automatic Power Feed"  # Name for the new power feed
+power_panel_id = 1  # ID of the power panel in NetBox
+rack_id = 1  # ID of the rack in NetBox
 
 # Initialize SSH client
 ssh_client = paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
 try:
-    # Connect to the router using SSH
+    # Connect to the network device using SSH
     ssh_client.connect(router_ip, username=username, password=password)
 
     # Execute the command to get power details
@@ -30,33 +29,22 @@ try:
     output = stdout.read().decode()
     stdin.close()
 
-    # Debug print the output to inspect the format
-    print("Command Output:\n", output)
-
     # Process the output to extract relevant power details
     power_details = {}
     lines = output.splitlines()
     for line in lines:
         if "Total Power Output (actual draw)" in line:
             value = line.split(":")[-1].strip()
-            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))  # Extract only the numeric part
-            print(f"Extracted Power Output: {value}")
-            power_details['output'] = float(value)  # Convert to float
-        elif "Total Power Input (actual draw)" in line:
-            value = line.split(":")[-1].strip()
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
-            print(f"Extracted Power Input: {value}")
-            power_details['input'] = float(value)
+            power_details['output'] = float(value)
         elif "Total Power Capacity" in line:
             value = line.split(":")[-1].strip()
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
-            print(f"Extracted Power Capacity: {value}")
             power_details['capacity'] = float(value)
         elif "Voltage" in line:
             value = line.split(":")[-1].strip()
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
-            print(f"Extracted Voltage: {value}")
-            power_details['voltage'] = float(value)  # Store the voltage value
+            power_details['voltage'] = float(value)
 
     # Close the SSH connection
     ssh_client.close()
@@ -66,40 +54,31 @@ try:
     total_capacity = power_details.get('capacity', 0)
     voltage = power_details.get('voltage', 0)
     if total_capacity > 0:
-        utilization_percentage = int((actual_draw / total_capacity) * 100)  # Convert to integer
+        utilization_percentage = int((actual_draw / total_capacity) * 100)
     else:
-        utilization_percentage = 0  # Avoid division by zero
+        utilization_percentage = 0
 
-    # Print the utilization percentage for debugging
-    print(f"Calculated Power Utilization: {utilization_percentage}%")
-    print(f"Voltage: {voltage}V")
+    # Create a new power feed in NetBox
+    new_power_feed = nb.dcim.power_feeds.create({
+        "name": power_feed_name,
+        "power_panel": power_panel_id,
+        "rack": rack_id,
+        "voltage": voltage,
+        "amperage": actual_draw / voltage if voltage > 0 else 0,
+        "max_utilization": utilization_percentage,
+        "allocated_draw": actual_draw,
+        "maximum_draw": total_capacity,
+        "status": "active",
+        "type": "primary",  # Example type, adjust as needed
+        "phase": "single-phase",  # Example phase, adjust as needed
+    })
 
-    # Retrieve the power feed in NetBox and update it with voltage
-    power_feed = nb.dcim.power_feeds.get(name=power_feed_name)
-
-    if power_feed:
-        power_feed.update({
-            "allocated_draw": actual_draw,  # Actual power draw in Watts
-            "maximum_draw": total_capacity, # Maximum capacity in Watts
-            "max_utilization": utilization_percentage,  # Utilization percentage as integer
-            "voltage": voltage  # Update the power feed with voltage
-        })
-        print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage}% and voltage: {voltage}V.")
-
-    # Now, update the rack details with this utilization only
-    rack = nb.dcim.racks.get(name=rack_name)
-    if rack:
-        rack.update({
-            "custom_fields": {
-                "Power Utilization": utilization_percentage  # Ensure this matches the exact field name in NetBox
-            }
-        })
-        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%.")
+    if new_power_feed:
+        print(f"Successfully created power feed '{power_feed_name}' with utilization {utilization_percentage}%.")
     else:
-        print(f"Rack {rack_name} not found in NetBox.")
+        print("Failed to create the power feed.")
 
 except Exception as e:
     print(f"An error occurred: {e}")
 finally:
-    # Ensure the SSH client is properly closed
     ssh_client.close()
