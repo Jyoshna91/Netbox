@@ -52,6 +52,11 @@ try:
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
             print(f"Extracted Power Capacity: {value}")
             power_details['capacity'] = float(value)
+        elif "Voltage" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Voltage: {value}")
+            power_details['voltage'] = float(value)  # Store the voltage value
 
     # Close the SSH connection
     ssh_client.close()
@@ -59,6 +64,7 @@ try:
     # Calculate power utilization percentage
     actual_draw = power_details.get('output', 0)
     total_capacity = power_details.get('capacity', 0)
+    voltage = power_details.get('voltage', 0)
     if total_capacity > 0:
         utilization_percentage = int((actual_draw / total_capacity) * 100)  # Convert to integer
     else:
@@ -66,6 +72,7 @@ try:
 
     # Print the utilization percentage for debugging
     print(f"Calculated Power Utilization: {utilization_percentage}%")
+    print(f"Voltage: {voltage}V")
 
     # Retrieve the power feed in NetBox and update it (optional)
     power_feed = nb.dcim.power_feeds.get(name=power_feed_name)
@@ -78,15 +85,16 @@ try:
         })
         print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage}%.")
 
-    # Now, update the rack details with this utilization
+    # Now, update the rack details with this utilization and voltage
     rack = nb.dcim.racks.get(name=rack_name)
     if rack:
         rack.update({
             "custom_fields": {
-                "Power Utilization": utilization_percentage  # Use the exact field name as it is in NetBox
+                "Power Utilization": utilization_percentage,  # Update the custom field with the integer utilization
+                "Voltage": voltage  # Update the custom field with the voltage
             }
         })
-        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%.")
+        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}% and voltage: {voltage}V.")
     else:
         print(f"Rack {rack_name} not found in NetBox.")
 
