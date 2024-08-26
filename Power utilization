@@ -58,13 +58,19 @@ try:
     else:
         utilization_percentage = 0
 
-    # Create a new power feed in NetBox
+    # Amperage calculation - ensure it is an integer
+    if voltage > 0:
+        amperage = int(actual_draw / voltage)
+    else:
+        amperage = 0  # Default value if voltage is 0 to avoid division by zero
+
+    # Create or update a power feed in NetBox
     new_power_feed = nb.dcim.power_feeds.create({
         "name": power_feed_name,
         "power_panel": power_panel_id,
         "rack": rack_id,
-        "voltage": voltage,
-        "amperage": actual_draw / voltage if voltage > 0 else 0,
+        "voltage": int(voltage),  # Ensure voltage is an integer
+        "amperage": amperage,  # Amperage as an integer
         "max_utilization": utilization_percentage,
         "allocated_draw": actual_draw,
         "maximum_draw": total_capacity,
