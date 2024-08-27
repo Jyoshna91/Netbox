@@ -11,9 +11,6 @@ NETBOX_URL = "http://10.133.35.137:8000"  # Ensure this is correct
 NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"    # Replace with your actual NetBox API token
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-# Power feed name in NetBox that you want to update
-power_feed_name = "POWER1"  # Replace with the actual name of the power feed
-
 # Rack name in NetBox that you want to update with the utilization details
 rack_name = "Rack1"  # Replace with the actual name of the rack
 
@@ -64,7 +61,6 @@ try:
     # Calculate power utilization percentage
     actual_draw = power_details.get('output', 0)
     total_capacity = power_details.get('capacity', 0)
-    voltage = power_details.get('voltage', 0)
     if total_capacity > 0:
         utilization_percentage = int((actual_draw / total_capacity) * 100)  # Convert to integer
     else:
@@ -72,29 +68,16 @@ try:
 
     # Print the utilization percentage for debugging
     print(f"Calculated Power Utilization: {utilization_percentage}%")
-    print(f"Voltage: {voltage}V")
-
-    # Retrieve the power feed in NetBox and update it with voltage
-    power_feed = nb.dcim.power_feeds.get(name=power_feed_name)
-
-    if power_feed:
-        power_feed.update({
-            "allocated_draw": actual_draw,  # Actual power draw in Watts
-            "maximum_draw": total_capacity, # Maximum capacity in Watts
-            "max_utilization": utilization_percentage,  # Utilization percentage as integer
-            "voltage": voltage  # Update the power feed with voltage
-        })
-        print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage}% and voltage: {voltage}V.")
-
+    
     # Now, update the rack details with the extracted power details
     rack = nb.dcim.racks.get(name=rack_name)
     if rack:
         rack.update({
             "custom_fields": {
-                "power_utilization1": utilization_percentage,  # Update with utilization percentage
-                "power_input": power_details.get('input', 0),  # Update with power input
-                "power_output": actual_draw,                  # Update with power output
-                "power_capacity": total_capacity              # Update with power capacity
+                "Power utilization1": utilization_percentage,  # Update with utilization percentage
+                "Power input": power_details.get('input', 0),   # Update with power input
+                "Power output": actual_draw,                    # Update with power output
+                "Power capacity": total_capacity                # Update with power capacity
             }
         })
         print(f"Updated rack {rack_name} in NetBox with power capacity: {total_capacity}W, power output: {actual_draw}W, power input: {power_details.get('input', 0)}W, and power utilization: {utilization_percentage}%.")
