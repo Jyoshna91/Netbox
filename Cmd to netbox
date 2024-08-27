@@ -91,10 +91,10 @@ try:
     if rack:
         rack.update({
             "custom_fields": {
-                "Power_Capacity": total_capacity,          # Update with power capacity
-                "Power_Output": actual_draw,               # Update with power output
-                "Power_Input": power_details.get('input', 0), # Update with power input
-                "Power_Utilization1": utilization_percentage  # Update with utilization percentage
+                "power_utilization1": utilization_percentage,  # Update with utilization percentage
+                "power_input": power_details.get('input', 0),  # Update with power input
+                "power_output": actual_draw,                  # Update with power output
+                "power_capacity": total_capacity              # Update with power capacity
             }
         })
         print(f"Updated rack {rack_name} in NetBox with power capacity: {total_capacity}W, power output: {actual_draw}W, power input: {power_details.get('input', 0)}W, and power utilization: {utilization_percentage}%.")
