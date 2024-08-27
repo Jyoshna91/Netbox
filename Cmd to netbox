@@ -86,15 +86,18 @@ try:
         })
         print(f"Updated power feed {power_feed_name} in NetBox with utilization: {utilization_percentage}% and voltage: {voltage}V.")
 
-    # Now, update the rack details with this utilization only
+    # Now, update the rack details with the extracted power details
     rack = nb.dcim.racks.get(name=rack_name)
     if rack:
         rack.update({
             "custom_fields": {
-                "Power_Utilization1": utilization_percentage  # Ensure this matches the exact field name in NetBox
+                "Power_Capacity": total_capacity,          # Update with power capacity
+                "Power_Output": actual_draw,               # Update with power output
+                "Power_Input": power_details.get('input', 0), # Update with power input
+                "Power_Utilization1": utilization_percentage  # Update with utilization percentage
             }
         })
-        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%.")
+        print(f"Updated rack {rack_name} in NetBox with power capacity: {total_capacity}W, power output: {actual_draw}W, power input: {power_details.get('input', 0)}W, and power utilization: {utilization_percentage}%.")
     else:
         print(f"Rack {rack_name} not found in NetBox.")
 
