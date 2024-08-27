@@ -91,7 +91,7 @@ try:
     if rack:
         rack.update({
             "custom_fields": {
-                "Power Utilization": utilization_percentage  # Update the custom field with the integer utilization
+                "Power_Utilization1": utilization_percentage  # Ensure this matches the exact field name in NetBox
             }
         })
         print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%.")
