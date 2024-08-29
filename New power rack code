@@ -10,7 +10,7 @@ nexus_switches = nb.dcim.devices.filter(device_type__model="Nexus9000")
 
 for switch in nexus_switches:
     print(f"Device Name: {switch.name}")
-
+    
     if switch.rack:
         print(f"Rack: {switch.rack.name}")
         print(f"Rack Position: U{switch.position} (Front)")
@@ -18,7 +18,7 @@ for switch in nexus_switches:
         # Rack space utilization
         rack = nb.dcim.racks.get(switch.rack.id)
         print(f"Total Rack Units: {rack.u_height}")
-
+        
         # Corrected way to calculate used rack units
         used_units = sum(device.device_type.u_height for device in nb.dcim.devices.filter(rack_id=rack.id))
         print(f"Used Rack Units: {used_units}")
@@ -32,4 +32,3 @@ for switch in nexus_switches:
         print(f"  Power Port: {port.name}, Power Draw: {power_draw} W")
 
     print(f"Total Power Draw for {switch.name}: {total_power} W\n")
-                                                                      
