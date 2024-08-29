@@ -24,7 +24,8 @@ for switch in nexus_switches:
         print(f"Used Rack Units: {used_units}")
 
         # Retrieve space utilization and power utilization1 from custom fields
-        space_utilization = getattr(rack, 'space_utilization', 'N/A')
-        power_utilization = rack.custom_fields.get("Power_utilization1", 'N/A')
+        space_utilization = rack.custom_fields.get('space_utilization', 'N/A')
+        power_utilization1 = rack.custom_fields.get('Power_utilization1', 'N/A')
+        
         print(f"Space Utilization: {space_utilization}")
-        print(f"Power utilization1: {power_utilization}")
+        print(f"Power utilization1: {power_utilization1}")
