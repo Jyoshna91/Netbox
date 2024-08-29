@@ -11,7 +11,7 @@ NETBOX_URL = "http://10.133.35.137:8000"  # Your NetBox instance URL
 NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"  # Your API token
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-# Rack name in NetBox that you want to update with the power utilization details
+# Rack name in NetBox that you want to update with the utilization details
 rack_name = "Rack1"  # Replace with the actual name of the rack
 
 # Initialize SSH client
@@ -27,6 +27,9 @@ try:
     output = stdout.read().decode()
     stdin.close()
 
+    # Debug print the output to inspect the format
+    print("Command Output:\n", output)
+
     # Process the output to extract relevant power details
     power_details = {}
     lines = output.splitlines()
@@ -34,11 +37,23 @@ try:
         if "Total Power Output (actual draw)" in line:
             value = line.split(":")[-1].strip()
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))  # Extract only the numeric part
+            print(f"Extracted Power Output: {value}")
             power_details['output'] = float(value)  # Convert to float
+        elif "Total Power Input (actual draw)" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Input: {value}")
+            power_details['input'] = float(value)
         elif "Total Power Capacity" in line:
             value = line.split(":")[-1].strip()
             value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Capacity: {value}")
             power_details['capacity'] = float(value)
+        elif "Voltage" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Voltage: {value}")
+            power_details['voltage'] = float(value)  # Store the voltage value
 
     # Close the SSH connection
     ssh_client.close()
@@ -54,21 +69,15 @@ try:
     # Print the utilization percentage for debugging
     print(f"Calculated Power Utilization: {utilization_percentage}%")
 
-    # Now, update the rack details with the power utilization
+    # Now, update the rack details with this utilization only
     rack = nb.dcim.racks.get(name=rack_name)
     if rack:
-        # Update only the 'Power utilization1' custom field
-        response = rack.update({
+        rack.update({
             "custom_fields": {
-                "Power utilization1": utilization_percentage
+                "Power_Utilization1": utilization_percentage  # Ensure this matches the exact field name in NetBox
             }
         })
-
-        # Check the response
-        if response:
-            print(f"Successfully updated rack {rack_name} in NetBox with Power utilization1: {utilization_percentage}%.")
-        else:
-            print(f"Failed to update rack {rack_name}. Check API permissions and field name.")
+        print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%.")
     else:
         print(f"Rack {rack_name} not found in NetBox.")
 
