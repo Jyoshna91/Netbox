@@ -1,0 +1,95 @@
+import paramiko
+import pynetbox
+
+router_ip = "10.133.35.148"
+username = "admin"
+password = "tcs123"
+
+# NetBox API connection details
+NETBOX_URL = "http://10.133.35.137:8000"  # Ensure this is correct
+NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"    # Replace with your actual NetBox API token
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Rack name in NetBox that you want to update with the utilization details
+rack_name = "Rack1"
+#ssh connection
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+try:
+    # Connect to the router using SSH
+    ssh_client.connect(router_ip, username=username, password=password)
+
+    # Execute the command to get power details
+    stdin, stdout, stderr = ssh_client.exec_command("show environment power")
+    output = stdout.read().decode()
+    stdin.close()
+
+    # Debug print the output to inspect the format
+    print("Command Output:\n", output)
+
+    # Process the output to extract relevant power details
+    power_details = {}
+    lines = output.splitlines()
+    for line in lines:
+        if "Total Power Output (actual draw)" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))  # Extract only the numeric part
+            print(f"Extracted Power Output: {value}")
+            power_details['output'] = float(value)  # Convert to float
+        elif "Total Power Input (actual draw)" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Input: {value}")
+            power_details['input'] = float(value)
+        elif "Total Power Capacity" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Capacity: {value}")
+            power_details['capacity'] = float(value)
+        elif "Voltage" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Voltage: {value}")
+            power_details['voltage'] = float(value)  # Store the voltage value
+
+    # Close the SSH connection
+   # ssh_client.close()
+
+    # Calculate power utilization percentage
+    actual_draw = power_details.get('output', 0)
+    total_capacity = power_details.get('capacity', 0)
+    if total_capacity > 0:
+        utilization_percentage = int((actual_draw / total_capacity) * 100)  # Convert to integer
+    else:
+        utilization_percentage = 0  # Avoid division by zero
+
+    # Print the utilization percentage for debugging
+    print(f"Calculated Power Utilization: {utilization_percentage}%")
+    
+    # Now, update the rack details with the extracted power details
+    rack = nb.dcim.racks.get(name=rack_name)
+    print(type(rack))
+    rack = nb.dcim.racks.get(name=rack_name)
+    if rack:
+        rack.update({
+            "Custom Fields": {
+                "Power utilization1": utilization_percentage,  # Update with utilization percentage
+               # "Power input": power_details.get('input', 0),   # Update with power input
+               # "Power output": actual_draw,                    # Update with power output
+               # "Power capacity": total_capacity,               # Update with power capacity
+            }
+       # P1 = nb.dcim.racks.set(Power_utilization1=utilization_percentage)
+        })
+        r = nb.dcim.racks.all()
+        for rds in r:
+            print(rds)
+        print(f"Updated rack {rack_name} in NetBox with power capacity: {total_capacity}W, power output: {actual_draw}W, power input: {power_details.get('input', 0)}W, and power utilization: {utilization_percentage}%.")
+    else:
+        print(f"Rack {rack_name} not found in NetBox.")
+
+except Exception as e:
+    print(f"An error occurred: {e}")
+finally:
+    # Ensure the SSH client is properly closed
+    ssh_client.close()
