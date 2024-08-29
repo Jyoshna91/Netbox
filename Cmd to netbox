@@ -7,11 +7,11 @@ username = "admin"
 password = "tcs123"
 
 # NetBox API connection details
-NETBOX_URL = "http://10.133.35.137:8000"  # Ensure this is correct
-NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"    # Replace with your actual NetBox API token
+NETBOX_URL = "http://10.133.35.137:8000"  # Your NetBox instance URL
+NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"  # Your API token
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-# Rack name in NetBox that you want to update with the utilization details
+# Rack name in NetBox that you want to update with the power details
 rack_name = "Rack1"  # Replace with the actual name of the rack
 
 # Initialize SSH client
@@ -68,19 +68,24 @@ try:
 
     # Print the utilization percentage for debugging
     print(f"Calculated Power Utilization: {utilization_percentage}%")
-    
+
     # Now, update the rack details with the extracted power details
     rack = nb.dcim.racks.get(name=rack_name)
     if rack:
+        # Prepare the custom field updates
+        custom_field_data = {
+            "Power utilization1": utilization_percentage,
+            "Power capacity": power_details.get('capacity', 0),
+            "Power input": power_details.get('input', 0),
+            "Power output": power_details.get('output', 0),
+        }
+
+        # Update the rack with the custom field data
         rack.update({
-            "custom_fields": {
-                "Power utilization1": utilization_percentage,  # Update with utilization percentage
-                "Power input": power_details.get('input', 0),   # Update with power input
-                "Power output": actual_draw,                    # Update with power output
-                "Power capacity": total_capacity                # Update with power capacity
-            }
+            "custom_fields": custom_field_data
         })
-        print(f"Updated rack {rack_name} in NetBox with power capacity: {total_capacity}W, power output: {actual_draw}W, power input: {power_details.get('input', 0)}W, and power utilization: {utilization_percentage}%.")
+
+        print(f"Updated rack {rack_name} in NetBox with the following data: {custom_field_data}.")
     else:
         print(f"Rack {rack_name} not found in NetBox.")
 
