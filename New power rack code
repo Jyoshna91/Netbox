@@ -23,12 +23,8 @@ for switch in nexus_switches:
         used_units = sum(device.device_type.u_height for device in nb.dcim.devices.filter(rack_id=rack.id))
         print(f"Used Rack Units: {used_units}")
 
-    # Fetch power utilization by querying power ports associated with this device
-    power_ports = nb.dcim.power_ports.filter(device_id=switch.id)
-    total_power = 0
-    for port in power_ports:
-        power_draw = port.allocated_draw if port.allocated_draw else 0
-        total_power += power_draw
-        print(f"  Power Port: {port.name}, Power Draw: {power_draw} W")
-
-    print(f"Total Power Draw for {switch.name}: {total_power} W\n")
+        # Retrieve space utilization and power utilization1 from custom fields
+        space_utilization = getattr(rack, 'space_utilization', 'N/A')
+        power_utilization = rack.custom_fields.get("Power_utilization1", 'N/A')
+        print(f"Space Utilization: {space_utilization}")
+        print(f"Power utilization1: {power_utilization}")
