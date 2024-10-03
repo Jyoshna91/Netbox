@@ -46,9 +46,11 @@ for router_ip, router_name in router_map.items():
         arp_scan_output = os.popen('sudo arp-scan --localnet').read()
         device_status = "inactive"  # Default status
 
-        # Check if both the router_ip and mac address are in the arp-scan output
-        arp_pattern = rf"{router_ip}\s+[0-9a-fA-F:]*{mac.replace('.', '')}"  # Match IP followed by MAC
-        if re.search(arp_pattern, arp_scan_output):
+        # Normalize MAC format (remove dots and replace with colons for arp-scan format)
+        formatted_mac = mac.replace('.', ':').lower()
+
+        # Search for both IP and MAC in the arp-scan output
+        if router_ip in arp_scan_output and formatted_mac in arp_scan_output:
             device_status = "active"
         else:
             device_status = "inactive"
@@ -61,4 +63,10 @@ for router_ip, router_name in router_map.items():
                 "custom_fields": {
                     "MAC_Address": mac
                 },
-                "
+                "status": device_status
+            })
+            print(f"Device {router_name} IP: {router_ip}, MAC: {mac}, and status: {device_status} updated in NetBox")
+        else:
+            print(f"Device {router_name} not found in NetBox.")
+    else:
+        print(f"No MAC address found for {router_name}.")
