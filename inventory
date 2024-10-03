@@ -1,0 +1,55 @@
+import paramiko
+import pynetbox
+import pandas as pd
+import re
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+#print(data.columns)
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+router_map = dict(zip(router_ips,router_names))
+username = usernames[1]
+password = passwords[1]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+aslis,asplis = [],[]
+rack_name = "Rack1"
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+for router_ip,router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show inventory chassis")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
+    print("\n",f"########################################{router_name}###############################################","\n")
+    print(output)
+    pattern = r"SN: (\w+)"
+    match = re.search(pattern,output)
+    if match:
+        sn = match.group(1)
+        print(sn)
+
+    device = nb.dcim.devices.get(name=router_name)
+
+    if device:
+        print(vars(device))
+        device.update({
+            "Device": {
+                "serial": sn
+            }
+        })
+        print(f"Updated device {router_name} in NetBox with serial number {sn}")
+    else:
+        print(f"device {router_name} not found in NetBox.")
+
+
