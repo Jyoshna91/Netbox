@@ -35,25 +35,27 @@ for router_ip, router_name in router_map.items():
     print(f"\n### {router_name} ###\n")
     print(output)
 
-    # Regex to match MAC address in show mac address-table output (dot-separated format)
+    # Regex to match MAC address in dot format (e.g., f40f.1bc2.bf45)
     pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
     match = re.search(pattern, output)
     if match:
         mac = match.group(1)
         print(f"Original MAC Address: {mac}")
 
-        # Convert MAC from dot format to colon format
+        # Convert MAC from dot format to colon format and only consider the first 10 characters
         formatted_mac = mac.replace('.', '')
         formatted_mac = ':'.join(formatted_mac[i:i+2] for i in range(0, len(formatted_mac), 2)).lower()
 
-        print(f"Formatted MAC Address for arp-scan: {formatted_mac}")
+        # Only keep the first 10 characters (e.g., "f4:0f:1b:c2")
+        truncated_mac = formatted_mac[:10]
+        print(f"Truncated MAC Address for arp-scan: {truncated_mac}")
 
-        # Run arp-scan to check if the IP and MAC address are both active
+        # Run arp-scan to check if the IP and first 10 characters of MAC address are both active
         arp_scan_output = os.popen('sudo arp-scan --localnet').read()
         device_status = "inactive"  # Default status
 
-        # Check if both the router_ip and formatted_mac address are in the arp-scan output
-        if router_ip in arp_scan_output and formatted_mac in arp_scan_output:
+        # Check if both the router_ip and the first 10 characters of the MAC address are in the arp-scan output
+        if router_ip in arp_scan_output and truncated_mac in arp_scan_output:
             device_status = "active"
         else:
             device_status = "inactive"
