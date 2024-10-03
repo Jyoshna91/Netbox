@@ -1,0 +1,69 @@
+import paramiko
+import pynetbox
+import pandas as pd
+import re
+import os
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+router_map = dict(zip(router_ips, router_names))
+username = usernames[1]
+password = passwords[1]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+for router_ip, router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show mac address-table")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
+
+    print(f"\n### {router_name} ###\n")
+    print(output)
+
+    # Regex to match MAC address pattern
+    pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
+    match = re.search(pattern, output)
+    if match:
+        mac = match.group(1)
+        print(mac)
+
+        # Check device activity using arp-scan command
+        arp_scan_output = os.popen('sudo arp-scan --localnet').read()
+        device_status = "offline"  # Default status
+
+        if mac in arp_scan_output:
+            device_status = "active"
+        else:
+            # If not found in arp-scan, check the status based on business rules
+            device_status = "offline"  # You can add additional checks here
+
+        # Get device from NetBox and update the MAC address and status
+        device = nb.dcim.devices.get(name=router_name)
+
+        if device:
+            device.update({
+                "custom_fields": {
+                    "MAC_Address": mac
+                },
+                "status": device_status
+            })
+            print(f"Device {router_name} MAC address: {mac} and status: {device_status} updated in NetBox")
+        else:
+            print(f"Device {router_name} not found in NetBox.")
+    else:
+        print(f"No MAC address found for {router_name}.")
