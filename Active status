@@ -1,3 +1,4 @@
+
 import paramiko
 import pynetbox
 import pandas as pd
@@ -42,15 +43,15 @@ for router_ip, router_name in router_map.items():
         mac = match.group(1)
         print(mac)
 
-        # Check device activity using arp-scan command
+        # Run arp-scan to check if the IP address is active
         arp_scan_output = os.popen('sudo arp-scan --localnet').read()
         device_status = "offline"  # Default status
 
-        if mac in arp_scan_output:
+        # Check if the router_ip is in the arp-scan output
+        if router_ip in arp_scan_output:
             device_status = "active"
         else:
-            # If not found in arp-scan, check the status based on business rules
-            device_status = "offline"  # You can add additional checks here
+            device_status = "offline"
 
         # Get device from NetBox and update the MAC address and status
         device = nb.dcim.devices.get(name=router_name)
@@ -62,7 +63,7 @@ for router_ip, router_name in router_map.items():
                 },
                 "status": device_status
             })
-            print(f"Device {router_name} MAC address: {mac} and status: {device_status} updated in NetBox")
+            print(f"Device {router_name} IP: {router_ip} and status: {device_status} updated in NetBox")
         else:
             print(f"Device {router_name} not found in NetBox.")
     else:
