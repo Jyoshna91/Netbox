@@ -1,0 +1,229 @@
+fanspeed:
+
+import paramiko
+import pynetbox
+import pandas as pd
+import re
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+#print(data.columns)
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+router_map = dict(zip(router_ips,router_names))
+username = usernames[1]
+password = passwords[1]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+aslis,asplis = [],[]
+rack_name = "Rack1"
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+for router_ip,router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show environment fan detail")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
+    print("\n",f"########################################{router_name}###############################################","\n")
+    print(output)
+    pattern = r"\s[0-9]{2}\s"
+    match = re.findall(pattern,output)
+    lis = [int(ele.strip()) for ele in match]
+    sum = 0
+    for i in lis:
+        sum+=i
+    print(f"Average speed percentage is : {sum/6}")
+    asplis.append(float(sum/6))
+    pattern = r"\s[0-9]{4,5}\s"
+    match = re.findall(pattern,output)
+    lis = [int(ele.strip()) for ele in match]
+    sum = 0
+    for i in lis:
+        sum+=i
+    print(f"Average Speed is : {sum/6}")
+    aslis.append(float(sum/6))
+
+rack = nb.dcim.racks.get(name=rack_name)
+sum1,sum2=0,0
+for i in aslis:
+    sum1+=i
+for i in asplis:
+    sum2+=i
+average=int(sum1/len(aslis))
+Apercentage = int(sum2/len(asplis))
+print(f"Average Speed : {average}")
+print(f"Average Speed Percentage : {Apercentage}")
+
+if rack:
+    rack.update({
+        "custom_fields": {
+            "Average_Speed": average,
+            "Average_Fan_Speed_Percentage" : Apercentage
+        }
+    })
+    print(f"Updated rack {rack_name} in NetBox with average speed : {average} RPM and Average speed percentage {Apercentage}%")
+else:
+    print(f"Rack {rack_name} not found in NetBox.")
+
+ssh_client.close()
+
+
+serial number:
+-------------
+
+import paramiko
+import pynetbox
+import pandas as pd
+import re
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+#print(data.columns)
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+router_map = dict(zip(router_ips,router_names))
+username = usernames[1]
+password = passwords[1]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+aslis,asplis = [],[]
+rack_name = "Rack1"
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+for router_ip,router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show inventory chassis")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
+    print("\n",f"########################################{router_name}###############################################","\n")
+    print(output)
+    pattern = r"SN: (\w+)"
+    match = re.search(pattern,output)
+    if match:
+        sn = match.group(1)
+        print(sn)
+
+    device = nb.dcim.devices.get(name=router_name)
+
+    if device:
+        #print(vars(device))
+        device.serial=sn
+        device.update({"serial":sn})
+        print(f"Updated device {router_name} in NetBox with serial number {sn}")
+    else:
+        print(f"device {router_name} not found in NetBox.")
+
+
+
+
+power:
+-------
+
+import paramiko
+import pynetbox
+import pandas as pd
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+print(data.columns)
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+username = usernames[1]
+password = passwords[1]
+al,tcl,ol=[],[],[]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+rack_name = "Rack1"
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+print("Command Output:")
+for router_ip in router_ips:
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show environment power")
+    output = stdout.read().decode()
+    stdin.close()
+    print(output)
+    ssh_client.close()
+
+    power_details = {}
+    lines = output.splitlines()
+    for line in lines:
+        if "Total Power Output (actual draw)" in line:
+            value2 = line.split(":")[-1].strip()
+            value2 = ''.join(filter(lambda x: x.isdigit() or x == '.', value2))
+            print(f"Extracted Power Output: {value2}")
+            power_details['output'] = float(value)
+        elif "Total Power Input (actual draw)" in line:
+            value1 = line.split(":")[-1].strip()
+            value1 = ''.join(filter(lambda x: x.isdigit() or x == '.', value1))
+            print(f"Extracted Power Input: {value}")
+            power_details['input'] = float(value1)
+        elif "Total Power Capacity" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Power Capacity: {value}")
+            power_details['capacity'] = float(value)
+        elif "Voltage" in line:
+            value = line.split(":")[-1].strip()
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', value))
+            print(f"Extracted Voltage: {value}")
+            power_details['voltage'] = float(value)
+    ssh_client.close()
+    ad = power_details.get('output', 0)
+    tc = power_details.get('capacity', 0)
+    al.append(ad)
+    tcl.append(float(value1))
+    ol.append(float(value2))
+actual_draw,total_capacity = sum(al),10000
+inputsum = sum(tcl)
+outputsum = sum(ol)
+
+if total_capacity > 0:
+    utilization_percentage = int((actual_draw / total_capacity) * 100)
+else:
+    utilization_percentage = 0  
+
+print(f"Calculated Power Utilization: {utilization_percentage}%")
+
+rack = nb.dcim.racks.get(name=rack_name)
+if rack:
+    rack.update({
+        "custom_fields": {
+            "Power_Utilization1": utilization_percentage,
+            "Power_Input": str(inputsum),
+            "Power_Output":int(outputsum)
+        }
+    })
+    print(f"Updated rack {rack_name} in NetBox with power utilization: {utilization_percentage}%, input: {inputsum} Watts, Output: {outputsum} Watts")
+else:
+    print(f"Rack {rack_name} not found in NetBox.")
+
+
+
