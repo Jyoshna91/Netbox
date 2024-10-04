@@ -23,6 +23,7 @@ username = usernames[1]
 password = passwords[1]
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 aslis, asplis = [], []
+al, tcl, ol = [], [], []  # For storing power utilization and other data
 rack_name = "Rack1"
 
 ssh_client = paramiko.SSHClient()
@@ -68,7 +69,32 @@ for router_ip, router_name in router_map.items():
     else:
         sn = None
 
-    # 3. MAC Address and Active Status Section
+    # 3. Power Utilization Section
+    stdin, stdout, stderr = ssh_client.exec_command("show environment power")
+    output = stdout.read().decode()
+    stdin.close()
+
+    print(f"\n### {router_name} Power Utilization ###\n")
+    print(output)
+
+    power_details = {}
+    lines = output.splitlines()
+    for line in lines:
+        if "Total Power Output (actual draw)" in line:
+            value2 = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
+            power_details['output'] = float(value2)
+        elif "Total Power Input (actual draw)" in line:
+            value1 = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
+            power_details['input'] = float(value1)
+        elif "Total Power Capacity" in line:
+            value = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
+            power_details['capacity'] = float(value)
+
+    al.append(power_details.get('output', 0))
+    tcl.append(power_details.get('input', 0))
+    ol.append(power_details.get('capacity', 0))
+
+    # 4. MAC Address and Active Status Section
     stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
     output = stdout.read().decode()
     stdin.close()
@@ -107,13 +133,19 @@ for router_ip, router_name in router_map.items():
 # Final calculations and updates to the rack in NetBox
 average_speed = int(sum(aslis) / len(aslis)) if aslis else 0
 average_percentage = int(sum(asplis) / len(asplis)) if asplis else 0
+input_sum = sum(tcl)
+output_sum = sum(ol)
 
 rack = nb.dcim.racks.get(name=rack_name)
 if rack:
     rack.update({
         "custom_fields": {
             "Average_Speed": average_speed,
-            "Average_Fan_Speed_Percentage": average_percentage
+            "Average_Fan_Speed_Percentage": average_percentage,
+            "Power_Input": input_sum,
+            "Power_Output": output_sum,
+            "Power_Utilization1": int((sum(al) / 10000) * 100),  # Adding power utilization details as required
+            "Power_Capacity": sum(ol)  # Add other custom fields as necessary based on your requirements
         }
     })
     print(f"Updated rack {rack_name} in NetBox.")
