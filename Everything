@@ -2,9 +2,8 @@ import paramiko
 import pynetbox
 import pandas as pd
 import re
-import os
 
-# Read the Excel file for router details
+# File path to the Excel file with router details
 file_path = '/home/tcs/router_details.xlsx'
 data = pd.read_excel(file_path, engine='openpyxl')
 
@@ -18,51 +17,49 @@ NETBOX_TOKEN = data['Netbox_token'].iloc[0]
 print("Router IPs:", router_ips)
 print("Router Names:", router_names)
 
+# Initialize variables and mappings
 router_map = dict(zip(router_ips, router_names))
 username = usernames[1]
 password = passwords[1]
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+aslis, asplis = [], []
 rack_name = "Rack1"
-
-# Initialize lists for data aggregation
-aslis, asplis, al, tcl, ol = [], [], [], [], []
 
 ssh_client = paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
+# Loop through all routers
 for router_ip, router_name in router_map.items():
     ssh_client.connect(router_ip, username=username, password=password)
 
-    # **1. Fan Speed Details**
+    # 1. Fan Speed Section
     stdin, stdout, stderr = ssh_client.exec_command("show environment fan detail")
     output = stdout.read().decode()
     stdin.close()
 
     print(f"\n### {router_name} Fan Speed ###\n")
     print(output)
+    fan_pattern = r"\s[0-9]{2}\s"
+    fan_match = re.findall(fan_pattern, output)
+    fan_list = [int(ele.strip()) for ele in fan_match]
+    fan_sum = sum(fan_list)
+    print(f"Average speed percentage is : {fan_sum / 6}")
+    asplis.append(float(fan_sum / 6))
 
-    fan_speed_pattern = r"\s[0-9]{2}\s"
-    fan_speed_match = re.findall(fan_speed_pattern, output)
-    fan_speed_list = [int(ele.strip()) for ele in fan_speed_match]
-    fan_speed_sum = sum(fan_speed_list)
-    average_speed_percentage = fan_speed_sum / 6 if len(fan_speed_list) >= 6 else 0
-    asplis.append(average_speed_percentage)
+    rpm_pattern = r"\s[0-9]{4,5}\s"
+    rpm_match = re.findall(rpm_pattern, output)
+    rpm_list = [int(ele.strip()) for ele in rpm_match]
+    rpm_sum = sum(rpm_list)
+    print(f"Average Speed is : {rpm_sum / 6}")
+    aslis.append(float(rpm_sum / 6))
 
-    fan_rpm_pattern = r"\s[0-9]{4,5}\s"
-    fan_rpm_match = re.findall(fan_rpm_pattern, output)
-    fan_rpm_list = [int(ele.strip()) for ele in fan_rpm_match]
-    fan_rpm_sum = sum(fan_rpm_list)
-    average_speed_rpm = fan_rpm_sum / 6 if len(fan_rpm_list) >= 6 else 0
-    aslis.append(average_speed_rpm)
-
-    # **2. Serial Number**
+    # 2. Serial Number Section
     stdin, stdout, stderr = ssh_client.exec_command("show inventory chassis")
     output = stdout.read().decode()
     stdin.close()
 
     print(f"\n### {router_name} Serial Number ###\n")
     print(output)
-
     serial_pattern = r"SN: (\w+)"
     serial_match = re.search(serial_pattern, output)
     if serial_match:
@@ -71,35 +68,7 @@ for router_ip, router_name in router_map.items():
     else:
         sn = None
 
-    # **3. Power Utilization**
-    stdin, stdout, stderr = ssh_client.exec_command("show environment power")
-    output = stdout.read().decode()
-    stdin.close()
-
-    print(f"\n### {router_name} Power Utilization ###\n")
-    print(output)
-
-    power_details = {}
-    lines = output.splitlines()
-    for line in lines:
-        if "Total Power Output (actual draw)" in line:
-            value2 = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
-            power_details['output'] = float(value2)
-        elif "Total Power Input (actual draw)" in line:
-            value1 = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
-            power_details['input'] = float(value1)
-        elif "Total Power Capacity" in line:
-            value = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
-            power_details['capacity'] = float(value)
-        elif "Voltage" in line:
-            value = ''.join(filter(lambda x: x.isdigit() or x == '.', line.split(":")[-1].strip()))
-            power_details['voltage'] = float(value)
-
-    al.append(power_details.get('output', 0))
-    tcl.append(power_details.get('input', 0))
-    ol.append(power_details.get('capacity', 0))
-
-    # **4. MAC Address and Active Status**
+    # 3. MAC Address and Active Status Section
     stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
     output = stdout.read().decode()
     stdin.close()
@@ -114,47 +83,41 @@ for router_ip, router_name in router_map.items():
         formatted_mac = mac.replace('.', '')
         truncated_mac = ':'.join(formatted_mac[i:i + 2] for i in range(0, len(formatted_mac), 2)).lower()[:10]
 
-        # Run arp-scan
+        # Run arp-scan to check if the IP and MAC address are active
         arp_scan_output = os.popen('sudo arp-scan --localhost').read()
         device_status = "active" if router_ip in arp_scan_output and truncated_mac in arp_scan_output else "inactive"
     else:
         device_status = "inactive"
         mac = None
 
-    # **NetBox Update for the Device**
+    # Update Device in NetBox (Only MAC address and status are updated)
     device = nb.dcim.devices.get(name=router_name)
     if device:
-        custom_fields = {
-            "Average_Speed": average_speed_rpm,
-            "Average_Fan_Speed_Percentage": average_speed_percentage,
-            "Power_Utilization1": sum(al),
-            "Power_Input": sum(tcl),
-            "Power_Output": sum(ol),
-            "MAC_Address": mac
-        }
         device.update({
-            "custom_fields": custom_fields,
             "serial": sn,
+            "custom_fields": {
+                "MAC_Address": mac
+            },
             "status": device_status
         })
-        print(f"Updated {router_name} in NetBox with fan, power, and MAC information.")
+        print(f"Updated {router_name} in NetBox with serial and MAC address.")
     else:
         print(f"Device {router_name} not found in NetBox.")
 
-ssh_client.close()
+# Final calculations and updates to the rack in NetBox
+average_speed = int(sum(aslis) / len(aslis)) if aslis else 0
+average_percentage = int(sum(asplis) / len(asplis)) if asplis else 0
 
-# Final updates for the rack in NetBox
 rack = nb.dcim.racks.get(name=rack_name)
 if rack:
     rack.update({
         "custom_fields": {
-            "Average_Speed": int(sum(aslis) / len(aslis)),
-            "Average_Fan_Speed_Percentage": int(sum(asplis) / len(asplis)),
-            "Power_Utilization1": int((sum(al) / 10000) * 100),
-            "Power_Input": sum(tcl),
-            "Power_Output": sum(ol)
+            "Average_Speed": average_speed,
+            "Average_Fan_Speed_Percentage": average_percentage
         }
     })
-    print(f"Updated rack {rack_name} with final values in NetBox.")
+    print(f"Updated rack {rack_name} in NetBox.")
 else:
     print(f"Rack {rack_name} not found in NetBox.")
+
+ssh_client.close()
