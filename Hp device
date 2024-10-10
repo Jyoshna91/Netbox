@@ -1,0 +1,83 @@
+import paramiko
+import pynetbox
+import re
+
+# NetBox URL and Token
+NETBOX_URL = 'http://your-netbox-url'
+NETBOX_TOKEN = 'your_netbox_token'
+
+# Intermediary server details
+server_ip = '10.133.35.137'
+server_username = 'stc'
+server_password = '123'
+
+# HP Device IP (accessed via the intermediary server)
+hp_device_ip = '10.133.35.134'
+router_name = 'Your_HP_Device_Name_in_NetBox'  # Update to match the device name in NetBox
+
+# Initialize NetBox API
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Set up SSH client for the intermediary server
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+ssh_client.connect(server_ip, username=server_username, password=server_password)
+
+# Start an SSH session on the intermediary server
+server_ssh = ssh_client.invoke_shell()
+server_ssh.send(f'ssh {hp_device_ip}\n')  # SSH into the HP device
+server_ssh.send('\n')  # In case it prompts to press enter for login confirmation
+
+# Wait for the connection to the HP device
+while not server_ssh.recv_ready():
+    pass
+output = server_ssh.recv(1000).decode()
+
+# Run the command on the HP device
+server_ssh.send('show system environment\n')
+
+# Wait for command output
+while not server_ssh.recv_ready():
+    pass
+output = server_ssh.recv(5000).decode()
+
+print(f"\n### HP Device Environment Output ###\n")
+print(output)
+
+# Extract MAC address and Serial Number from the output
+mac_pattern = r"([0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2})"
+serial_pattern = r"Serial Number:\s*(\S+)"
+
+mac_match = re.search(mac_pattern, output)
+serial_match = re.search(serial_pattern, output)
+
+# Process the MAC and Serial number
+mac = mac_match.group(1) if mac_match else None
+serial = serial_match.group(1) if serial_match else None
+
+if mac:
+    print(f"MAC Address: {mac}")
+else:
+    print("MAC Address not found.")
+
+if serial:
+    print(f"Serial Number: {serial}")
+else:
+    print("Serial Number not found.")
+
+# Update the HP device information in NetBox
+device = nb.dcim.devices.get(name=router_name)
+if device:
+    device.update({
+        "serial": serial,
+        "custom_fields": {
+            "MAC_Address": mac
+        }
+    })
+    print(f"Updated {router_name} in NetBox with MAC Address: {mac} and Serial Number: {serial}")
+else:
+    print(f"Device {router_name} not found in NetBox.")
+
+# Close SSH connections
+server_ssh.close()
+ssh_client.close()
