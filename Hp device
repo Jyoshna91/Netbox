@@ -1,83 +1,74 @@
 import paramiko
 import pynetbox
+import pandas as pd
 import re
+import os
 
-# NetBox URL and Token
-NETBOX_URL = 'http://your-netbox-url'
-NETBOX_TOKEN = 'your_netbox_token'
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
 
-# Intermediary server details
-server_ip = '10.133.35.137'
-server_username = 'stc'
-server_password = '123'
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
 
-# HP Device IP (accessed via the intermediary server)
-hp_device_ip = '10.133.35.134'
-router_name = 'Your_HP_Device_Name_in_NetBox'  # Update to match the device name in NetBox
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
 
-# Initialize NetBox API
+router_map = dict(zip(router_ips, router_names))
+username = usernames[1]
+password = passwords[1]
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-# Set up SSH client for the intermediary server
 ssh_client = paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-ssh_client.connect(server_ip, username=server_username, password=server_password)
 
-# Start an SSH session on the intermediary server
-server_ssh = ssh_client.invoke_shell()
-server_ssh.send(f'ssh {hp_device_ip}\n')  # SSH into the HP device
-server_ssh.send('\n')  # In case it prompts to press enter for login confirmation
+for router_ip, router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
 
-# Wait for the connection to the HP device
-while not server_ssh.recv_ready():
-    pass
-output = server_ssh.recv(1000).decode()
+    print(f"\n### {router_name} ###\n")
+    print(output)
 
-# Run the command on the HP device
-server_ssh.send('show system environment\n')
 
-# Wait for command output
-while not server_ssh.recv_ready():
-    pass
-output = server_ssh.recv(5000).decode()
+    pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
+    match = re.search(pattern, output)
+    if match:
+        mac = match.group(1)
+        print(f"Original MAC Address: {mac}")
 
-print(f"\n### HP Device Environment Output ###\n")
-print(output)
+        formatted_mac = mac.replace('.', '')
+        formatted_mac = ':'.join(formatted_mac[i:i+2] for i in range(0, len(formatted_mac), 2)).lower()
 
-# Extract MAC address and Serial Number from the output
-mac_pattern = r"([0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2}[:-][0-9a-f]{2})"
-serial_pattern = r"Serial Number:\s*(\S+)"
 
-mac_match = re.search(mac_pattern, output)
-serial_match = re.search(serial_pattern, output)
+        truncated_mac = formatted_mac[:17]
+        print(f"Truncated MAC Address for arp-scan: {truncated_mac}")
 
-# Process the MAC and Serial number
-mac = mac_match.group(1) if mac_match else None
-serial = serial_match.group(1) if serial_match else None
+        arp_scan_output = os.popen('sudo arp-scan --localnet').read()
+        device_status = "offline"
 
-if mac:
-    print(f"MAC Address: {mac}")
-else:
-    print("MAC Address not found.")
+        if router_ip in arp_scan_output and truncated_mac in arp_scan_output:
+            device_status = "active"
+        else:
+            device_status = "offline"
 
-if serial:
-    print(f"Serial Number: {serial}")
-else:
-    print("Serial Number not found.")
 
-# Update the HP device information in NetBox
-device = nb.dcim.devices.get(name=router_name)
-if device:
-    device.update({
-        "serial": serial,
-        "custom_fields": {
-            "MAC_Address": mac
-        }
-    })
-    print(f"Updated {router_name} in NetBox with MAC Address: {mac} and Serial Number: {serial}")
-else:
-    print(f"Device {router_name} not found in NetBox.")
+        device = nb.dcim.devices.get(name=router_name)
 
-# Close SSH connections
-server_ssh.close()
-ssh_client.close()
+        if device:
+            device.update({
+                "custom_fields": {
+                    "MAC_Address": mac
+                },
+                "status": device_status
+            })
+            print(f"Device {router_name} IP: {router_ip}, MAC: {mac}, and status: {device_status} updated in NetBox")
+        else:
+            print(f"Device {router_name} not found in NetBox.")
+    else:
+        print(f"No MAC address found for {router_name}.")
