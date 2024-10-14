@@ -1,0 +1,51 @@
+import pynetbox
+import pandas as pd
+import fitz  # PyMuPDF
+import re
+
+# Load Excel file for NetBox connection details
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+
+# NetBox configuration details
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Path to the local PDF file for device type details
+pdf_path = '/home/tcs/Documents/Cisco Nexus 9396PX Switch-Cisco.pdf'
+
+# Open the PDF file
+pdf_document = fitz.open(pdf_path)
+
+# Initialize storage for PDF details
+rack_height, weight = None, None
+
+# Extract the required details from the PDF
+for page_index in range(pdf_document.page_count):
+    page = pdf_document[page_index]
+    text = page.get_text("text")
+
+    # Use regex to find the details in the text
+    height_match = re.search(r'Rack Height:\s*(\d+)', text)
+    weight_match = re.search(r'Weight:\s*(\d+\.?\d*)\s*kg', text)
+
+    if height_match:
+        rack_height = int(height_match.group(1))
+    if weight_match:
+        weight = float(weight_match.group(1))
+
+pdf_document.close()
+
+# Find the DeviceType named "Nexus9000 C9396PX Chassis" to update in NetBox
+device_type = nb.dcim.device_types.get(model="Nexus9000 C9396PX Chassis")
+
+# Update the DeviceType with extracted details
+if device_type:
+    device_type.update({
+        "height": rack_height,  # NetBox's built-in 'height' field for DeviceType
+        "weight": weight        # Assuming 'weight' is a custom field, adjust if necessary
+    })
+    print(f"Updated 'Nexus9000 C9396PX Chassis' DeviceType in NetBox with rack height and weight.")
+else:
+    print("Device type 'Nexus9000 C9396PX Chassis' not found in NetBox.")
