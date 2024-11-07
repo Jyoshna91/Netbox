@@ -1,6 +1,8 @@
 import paramiko
 import pynetbox
 import re
+import os
+import time
 
 # NetBox and device configuration
 NETBOX_URL = 'http://10.133.35.137:8000'
@@ -9,12 +11,15 @@ virtual_device_ip = '10.133.35.133'
 device_name = 'VR1'
 virtual_device_username = 'tcs'
 virtual_device_password = 'tcs12345'
+physical_server_ip = '10.133.35.137'
+physical_server_username = 'tcs'
+physical_server_password = 'tcs'
 
 # Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-def get_enp0s3_ip_addresses():
-    """Retrieve IPv4 and IPv6 addresses specifically for the enp0s3 interface from the virtual device."""
+def get_enp0s3_details():
+    """Retrieve IPv4, IPv6, and MAC address for the enp0s3 interface from the virtual device."""
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
@@ -29,22 +34,47 @@ def get_enp0s3_ip_addresses():
         enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
         if not enp0s3_section:
             print("Could not find enp0s3 interface in the output.")
-            return None, None
+            return None, None, None
 
         enp0s3_output = enp0s3_section.group(0)
 
-        # Extract IPv4 and IPv6 addresses from enp0s3 section
+        # Extract IPv4, IPv6, and MAC addresses from enp0s3 section
         ipv4_match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", enp0s3_output)
         ipv6_match = re.search(r"inet6\s+([a-fA-F0-9:]+)", enp0s3_output)
+        mac_match = re.search(r"link/ether\s+([0-9a-fA-F:]{17})", enp0s3_output)
 
         ipv4_address = ipv4_match.group(1) if ipv4_match else None
         ipv6_address = ipv6_match.group(1) if ipv6_match else None
+        mac_address = mac_match.group(1) if mac_match else None
 
-        return ipv4_address, ipv6_address
+        return ipv4_address, ipv6_address, mac_address
 
     except Exception as e:
         print(f"An error occurred while connecting to the virtual device: {e}")
-        return None, None
+        return None, None, None
+    finally:
+        ssh_client.close()
+
+def run_arp_scan_on_physical_server():
+    """Run arp-scan on the physical server and retrieve the MAC address for the virtual device IP."""
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        ssh_client.connect(physical_server_ip, username=physical_server_username, password=physical_server_password)
+        stdin, stdout, stderr = ssh_client.exec_command("sudo arp-scan --localnet")
+        
+        # Wait for the command to complete and fetch the output
+        time.sleep(3)
+        output = stdout.read().decode()
+        
+        # Search for the MAC address of the virtual device IP
+        arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", output)
+        return arp_match.group(1) if arp_match else None
+
+    except Exception as e:
+        print(f"An error occurred while running arp-scan on the physical server: {e}")
+        return None
     finally:
         ssh_client.close()
 
@@ -74,37 +104,27 @@ def get_or_create_ip(ip_address, device, interface_name="enp0s3"):
 
     return ip_obj
 
-def update_netbox_device_ips(ipv4_address, ipv6_address):
-    """Update the device in NetBox with the primary IPv4 and IPv6 addresses."""
+def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
+    """Update the device in NetBox with IPs, MAC address, and status."""
     device = nb.dcim.devices.get(name=device_name)
     if device:
-        # Get or create IP objects and assign them to the device interfaces
+        # Update the IP addresses
         ipv4_obj = get_or_create_ip(ipv4_address, device) if ipv4_address else None
         ipv6_obj = get_or_create_ip(ipv6_address, device) if ipv6_address else None
 
-        # Update the device in NetBox with IPs
-        update_data = {}
-
-        # Reference the IP objects by their IDs for primary_ip4 and primary_ip6
+        # Prepare the data for updating the device in NetBox
+        update_data = {
+            "status": status,
+            "custom_fields": {
+                "Mac address": mac_address  # Ensure this matches the exact name in NetBox
+            }
+        }
         if ipv4_obj:
             update_data["primary_ip4"] = ipv4_obj.id
         if ipv6_obj:
             update_data["primary_ip6"] = ipv6_obj.id
 
-        if update_data:
-            device.update(update_data)
-            print(f"Device '{device_name}' updated in NetBox with:")
-            print(f" - IPv4 Address: {ipv4_address}")
-            print(f" - IPv6 Address: {ipv6_address}")
-        else:
-            print("No IP address data to update.")
-    else:
-        print(f"Device '{device_name}' not found in NetBox.")
-
-# Main script execution
-ipv4_address, ipv6_address = get_enp0s3_ip_addresses()
-if ipv4_address or ipv6_address:
-    # Update NetBox with device IP information
-    update_netbox_device_ips(ipv4_address, ipv6_address)
-else:
-    print("Failed to retrieve necessary IP information from the enp0s3 interface.")
+        # Update the device with the IPs, MAC address, and status
+        device.update(update_data)
+        print(f"Device '{device_name}' updated in NetBox with:")
+       
