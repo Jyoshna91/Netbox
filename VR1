@@ -1,74 +1,103 @@
 import paramiko
 import pynetbox
-import pandas as pd
 import re
 import os
 
-file_path = '/home/tcs/router_details.xlsx'
-data = pd.read_excel(file_path, engine='openpyxl')
+# NetBox and device configuration
+NETBOX_URL = 'http://10.133.35.137:8000'
+NETBOX_TOKEN = 'b10f953429d54bcbe45a24445161f863b202089b'
+virtual_device_ip = '10.133.35.133'
+device_name = 'VR1'
+virtual_device_username = 'tcs'
+virtual_device_password = 'tcs12345'
 
-router_ips = data['Router_Ips'].tolist()
-router_names = data['Router_Names'].tolist()
-usernames = data['Username'].tolist()
-passwords = data['Password'].tolist()
-NETBOX_URL = data['Netbox_url'].iloc[0]
-NETBOX_TOKEN = data['Netbox_token'].iloc[0]
-
-print("Router IPs:", router_ips)
-print("Router Names:", router_names)
-
-router_map = dict(zip(router_ips, router_names))
-username = usernames[1]
-password = passwords[1]
+# Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-ssh_client = paramiko.SSHClient()
-ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
-for router_ip, router_name in router_map.items():
-    ssh_client.connect(router_ip, username=username, password=password)
-    stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
-    output = stdout.read().decode()
-    stdin.close()
-    ssh_client.close()
-
-    print(f"\n### {router_name} ###\n")
-    print(output)
-
+def get_enp0s3_mac_from_ip():
+    """Retrieve and format the MAC address for the enp0s3 interface from the 'ip address' command on the virtual device (133)."""
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
-    pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
-    match = re.search(pattern, output)
-    if match:
-        mac = match.group(1)
-        print(f"Original MAC Address: {mac}")
+    try:
+        print("Connecting to virtual device (133)...")
+        ssh_client.connect(virtual_device_ip, username=virtual_device_username, password=virtual_device_password)
+        
+        # Run the command to get IP addresses
+        print("Running 'ip address' command on virtual device (133)...")
+        stdin, stdout, stderr = ssh_client.exec_command("ip address")
+        output = stdout.read().decode()
+        print("Output from 'ip address':\n", output)
 
-        formatted_mac = mac.replace('.', '')
-        formatted_mac = ':'.join(formatted_mac[i:i+2] for i in range(0, len(formatted_mac), 2)).lower()
+        # Extract the MAC address from enp0s3 section
+        enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
+        if not enp0s3_section:
+            print("Could not find enp0s3 interface in the output.")
+            return None
 
+        mac_match = re.search(r"link/ether\s+([0-9a-fA-F:]{17})", enp0s3_section.group(0))
+        if mac_match:
+            mac = mac_match.group(1)
+            print(f"Extracted MAC Address from 'ip address': {mac}")
 
-        truncated_mac = formatted_mac[:17]
-        print(f"Truncated MAC Address for arp-scan: {truncated_mac}")
-
-        arp_scan_output = os.popen('sudo arp-scan --localnet').read()
-        device_status = "offline"
-
-        if router_ip in arp_scan_output and truncated_mac in arp_scan_output:
-            device_status = "active"
+            # Format MAC address by removing colons
+            formatted_mac = mac.replace(":", "").lower()
+            return formatted_mac
         else:
-            device_status = "offline"
+            print("MAC address not found in 'ip address' output.")
+            return None
 
+    except Exception as e:
+        print(f"An error occurred while connecting to the virtual device: {e}")
+        return None
+    finally:
+        ssh_client.close()
 
-        device = nb.dcim.devices.get(name=router_name)
+def get_mac_from_arp_scan(target_ip, formatted_mac):
+    """Run arp-scan on the local physical server (137) and check if the MAC address for target_ip matches the extracted MAC."""
+    print("Running 'arp-scan --localnet' on physical server (137)...")
+    arp_scan_output = os.popen("sudo arp-scan --localnet").read()
+    print("Output from 'arp-scan':\n", arp_scan_output)
 
-        if device:
-            device.update({
-                "custom_fields": {
-                    "MAC_Address": mac
-                },
-                "status": device_status
-            })
-            print(f"Device {router_name} IP: {router_ip}, MAC: {mac}, and status: {device_status} updated in NetBox")
-        else:
-            print(f"Device {router_name} not found in NetBox.")
+    # Check if both the IP and formatted MAC address are in the arp-scan output
+    if target_ip in arp_scan_output and formatted_mac in arp_scan_output:
+        print(f"MAC address {formatted_mac} for IP {target_ip} found in arp-scan output.")
+        return True
     else:
-        print(f"No MAC address found for {router_name}.")
+        print(f"MAC address {formatted_mac} for IP {target_ip} NOT found in arp-scan output.")
+        return False
+
+def update_netbox_device(mac_address, status):
+    """Update the device in NetBox with MAC address and status."""
+    device = nb.dcim.devices.get(name=device_name)
+    if device:
+        print(f"Updating device '{device_name}' in NetBox...")
+        update_data = {
+            "status": status,
+            "custom_fields": {
+                "MAC_Address": mac_address  # Ensure this matches the exact custom field name in NetBox
+            }
+        }
+
+        device.update(update_data)
+        print(f"Device '{device_name}' updated in NetBox with:")
+        print(f" - MAC Address: {mac_address}")
+        print(f" - Status: {status}")
+    else:
+        print(f"Device '{device_name}' not found in NetBox.")
+
+# Main script execution
+mac_address_from_ip = get_enp0s3_mac_from_ip()
+
+if mac_address_from_ip:
+    # Format the MAC address for matching with arp-scan output
+    formatted_mac_for_arp_scan = mac_address_from_ip.lower()
+    
+    # Check if MAC address matches with arp-scan output
+    is_active = get_mac_from_arp_scan(virtual_device_ip, formatted_mac_for_arp_scan)
+    status = "active" if is_active else "offline"
+    
+    # Update NetBox with the MAC and status information
+    update_netbox_device(mac_address_from_ip, status)
+else:
+    print("Failed to retrieve MAC address from the virtual device.")
