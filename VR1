@@ -11,6 +11,7 @@ virtual_device_ip = '10.133.35.133'
 device_name = 'VR1'
 virtual_device_username = 'tcs'
 virtual_device_password = 'tcs12345'
+ARP_SCAN_RETRIES = 3  # Number of times to retry arp-scan if MAC not found
 
 # Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
@@ -60,19 +61,24 @@ def get_enp0s3_details():
     finally:
         ssh_client.close()
 
-def run_arp_scan():
+def run_arp_scan(retries=ARP_SCAN_RETRIES):
     """Run arp-scan on the local physical server (137) and retrieve the MAC address for the virtual device IP (133)."""
-    print("Running 'arp-scan --localnet' on physical server (137)...")
-    arp_scan_output = os.popen("sudo arp-scan --localnet").read()
-    print("Output from 'arp-scan':\n", arp_scan_output)
-    
-    # Search for the MAC address of the virtual device IP
-    arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
-    if arp_match:
-        print("Found MAC Address in arp-scan:", arp_match.group(1))
-    else:
-        print("MAC Address not found for the virtual device IP in arp-scan output.")
-    return arp_match.group(1) if arp_match else None
+    for attempt in range(retries):
+        print(f"Running 'arp-scan --localnet' on physical server (137)... Attempt {attempt + 1}")
+        arp_scan_output = os.popen("sudo arp-scan --localnet").read()
+        print("Output from 'arp-scan':\n", arp_scan_output)
+        
+        # Search for the MAC address of the virtual device IP
+        arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
+        if arp_match:
+            print("Found MAC Address in arp-scan:", arp_match.group(1))
+            return arp_match.group(1)
+        else:
+            print("MAC Address not found for the virtual device IP in arp-scan output. Retrying...")
+            time.sleep(2)  # Wait a bit before retrying
+
+    print("MAC Address not found in arp-scan after multiple attempts.")
+    return None
 
 def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
     """Update the device in NetBox with IPs, MAC address, and status."""
