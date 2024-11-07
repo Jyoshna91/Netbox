@@ -37,12 +37,9 @@ def get_enp0s3_mac_from_ip():
 
         mac_match = re.search(r"link/ether\s+([0-9a-fA-F:]{17})", enp0s3_section.group(0))
         if mac_match:
-            mac = mac_match.group(1)
+            mac = mac_match.group(1).lower()
             print(f"Extracted MAC Address from 'ip address': {mac}")
-
-            # Format MAC address by removing colons
-            formatted_mac = mac.replace(":", "").lower()
-            return formatted_mac
+            return mac
         else:
             print("MAC address not found in 'ip address' output.")
             return None
@@ -53,18 +50,18 @@ def get_enp0s3_mac_from_ip():
     finally:
         ssh_client.close()
 
-def get_mac_from_arp_scan(target_ip, formatted_mac):
+def get_mac_from_arp_scan(target_ip, mac_to_match):
     """Run arp-scan on the local physical server (137) and check if the MAC address for target_ip matches the extracted MAC."""
     print("Running 'arp-scan --localnet' on physical server (137)...")
     arp_scan_output = os.popen("sudo arp-scan --localnet").read()
     print("Output from 'arp-scan':\n", arp_scan_output)
 
-    # Check if both the IP and formatted MAC address are in the arp-scan output
-    if target_ip in arp_scan_output and formatted_mac in arp_scan_output:
-        print(f"MAC address {formatted_mac} for IP {target_ip} found in arp-scan output.")
+    # Check if both the IP and the MAC address with colons are in the arp-scan output
+    if target_ip in arp_scan_output and mac_to_match in arp_scan_output:
+        print(f"MAC address {mac_to_match} for IP {target_ip} found in arp-scan output.")
         return True
     else:
-        print(f"MAC address {formatted_mac} for IP {target_ip} NOT found in arp-scan output.")
+        print(f"MAC address {mac_to_match} for IP {target_ip} NOT found in arp-scan output.")
         return False
 
 def update_netbox_device(mac_address, status):
@@ -90,11 +87,8 @@ def update_netbox_device(mac_address, status):
 mac_address_from_ip = get_enp0s3_mac_from_ip()
 
 if mac_address_from_ip:
-    # Format the MAC address for matching with arp-scan output
-    formatted_mac_for_arp_scan = mac_address_from_ip.lower()
-    
-    # Check if MAC address matches with arp-scan output
-    is_active = get_mac_from_arp_scan(virtual_device_ip, formatted_mac_for_arp_scan)
+    # Use the MAC address with colons as extracted
+    is_active = get_mac_from_arp_scan(virtual_device_ip, mac_address_from_ip)
     status = "active" if is_active else "offline"
     
     # Update NetBox with the MAC and status information
