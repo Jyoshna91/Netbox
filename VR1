@@ -51,20 +51,20 @@ def get_enp0s3_mac_from_ip():
     finally:
         ssh_client.close()
 
-def get_mac_from_arp_scan():
-    """Run arp-scan on the local physical server (137) and retrieve the MAC address for the virtual device IP (133)."""
+def get_mac_from_arp_scan(target_ip):
+    """Run arp-scan on the local physical server (137) and retrieve the MAC address for the target IP (133)."""
     print("Running 'arp-scan --localnet' on physical server (137)...")
     arp_scan_output = os.popen("sudo arp-scan --localnet").read()
     print("Output from 'arp-scan':\n", arp_scan_output)
     
-    # Search for the MAC address of the virtual device IP
-    arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
+    # Search for the specific line containing the target IP and its MAC address
+    arp_match = re.search(rf"{target_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
     if arp_match:
         mac_from_arp_scan = arp_match.group(1)
         print("Extracted MAC Address from 'arp-scan':", mac_from_arp_scan)
         return mac_from_arp_scan
     else:
-        print("MAC Address not found for the virtual device IP in arp-scan output.")
+        print(f"MAC Address not found for IP {target_ip} in arp-scan output.")
         return None
 
 def update_netbox_device(mac_address, status):
@@ -88,7 +88,7 @@ def update_netbox_device(mac_address, status):
 
 # Main script execution
 mac_address_from_ip = get_enp0s3_mac_from_ip()
-mac_address_from_arp_scan = get_mac_from_arp_scan()
+mac_address_from_arp_scan = get_mac_from_arp_scan(virtual_device_ip)
 
 if mac_address_from_ip and mac_address_from_arp_scan:
     # Compare MAC addresses to determine device status
