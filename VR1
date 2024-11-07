@@ -13,8 +13,8 @@ virtual_device_password = 'tcs12345'
 # Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-def get_virtual_device_ip_addresses():
-    """Retrieve IPv4 and IPv6 addresses from the virtual device."""
+def get_enp0s3_ip_addresses():
+    """Retrieve IPv4 and IPv6 addresses specifically for the enp0s3 interface from the virtual device."""
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
@@ -25,12 +25,17 @@ def get_virtual_device_ip_addresses():
         stdin, stdout, stderr = ssh_client.exec_command("ip address")
         output = stdout.read().decode()
 
-        # Extract IPv4 and IPv6 addresses
-        ipv4_pattern = r"inet\s+(\d+\.\d+\.\d+\.\d+)"
-        ipv6_pattern = r"inet6\s+([a-fA-F0-9:]+)"
+        # Focus on the enp0s3 section only
+        enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
+        if not enp0s3_section:
+            print("Could not find enp0s3 interface in the output.")
+            return None, None
 
-        ipv4_match = re.search(ipv4_pattern, output)
-        ipv6_match = re.search(ipv6_pattern, output)
+        enp0s3_output = enp0s3_section.group(0)
+
+        # Extract IPv4 and IPv6 addresses from enp0s3 section
+        ipv4_match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", enp0s3_output)
+        ipv6_match = re.search(r"inet6\s+([a-fA-F0-9:]+)", enp0s3_output)
 
         ipv4_address = ipv4_match.group(1) if ipv4_match else None
         ipv6_address = ipv6_match.group(1) if ipv6_match else None
@@ -43,24 +48,39 @@ def get_virtual_device_ip_addresses():
     finally:
         ssh_client.close()
 
-def get_or_create_ip(ip_address):
-    """Retrieve an IP address object from NetBox or create it if it doesn’t exist."""
+def get_or_create_ip(ip_address, device, interface_name="enp0s3"):
+    """Retrieve an IP address object from NetBox or create it if it doesn’t exist, and assign it to the device."""
     ip_obj = nb.ipam.ip_addresses.get(address=ip_address)
     if not ip_obj:
         # Create the IP address if it doesn't exist
         ip_obj = nb.ipam.ip_addresses.create({
             "address": ip_address,
-            "status": "active"
+            "status": "active",
         })
+    
+    # Assign the IP to the device interface if not already assigned
+    if not ip_obj.assigned_object:
+        # Find or create an interface on the device
+        interface = nb.dcim.interfaces.get(device_id=device.id, name=interface_name)
+        if not interface:
+            interface = nb.dcim.interfaces.create({
+                "device": device.id,
+                "name": interface_name,
+                "type": "1000base-t"  # assuming a common type for demonstration
+            })
+        
+        # Assign the IP to the interface
+        ip_obj.update({"assigned_object_type": "dcim.interface", "assigned_object_id": interface.id})
+
     return ip_obj
 
 def update_netbox_device_ips(ipv4_address, ipv6_address):
     """Update the device in NetBox with the primary IPv4 and IPv6 addresses."""
     device = nb.dcim.devices.get(name=device_name)
     if device:
-        # Get or create IP objects
-        ipv4_obj = get_or_create_ip(ipv4_address) if ipv4_address else None
-        ipv6_obj = get_or_create_ip(ipv6_address) if ipv6_address else None
+        # Get or create IP objects and assign them to the device interfaces
+        ipv4_obj = get_or_create_ip(ipv4_address, device) if ipv4_address else None
+        ipv6_obj = get_or_create_ip(ipv6_address, device) if ipv6_address else None
 
         # Update the device in NetBox with IPs
         update_data = {}
@@ -82,9 +102,9 @@ def update_netbox_device_ips(ipv4_address, ipv6_address):
         print(f"Device '{device_name}' not found in NetBox.")
 
 # Main script execution
-ipv4_address, ipv6_address = get_virtual_device_ip_addresses()
+ipv4_address, ipv6_address = get_enp0s3_ip_addresses()
 if ipv4_address or ipv6_address:
     # Update NetBox with device IP information
     update_netbox_device_ips(ipv4_address, ipv6_address)
 else:
-    print("Failed to retrieve necessary IP information from the virtual device.")
+    print("Failed to retrieve necessary IP information from the enp0s3 interface.")
