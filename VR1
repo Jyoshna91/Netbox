@@ -14,8 +14,8 @@ virtual_device_password = 'tcs12345'
 # Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 
-def get_enp0s3_details():
-    """Retrieve IPv4, IPv6, and MAC address for the enp0s3 interface from the virtual device (133)."""
+def get_enp0s3_mac_from_ip():
+    """Retrieve the MAC address for the enp0s3 interface from the 'ip address' command on the virtual device (133)."""
     ssh_client = paramiko.SSHClient()
     ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     
@@ -29,37 +29,29 @@ def get_enp0s3_details():
         output = stdout.read().decode()
         print("Output from 'ip address':\n", output)
 
-        # Focus on the enp0s3 section only
+        # Focus on the enp0s3 section only and extract the MAC address
         enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
         if not enp0s3_section:
             print("Could not find enp0s3 interface in the output.")
-            return None, None, None
+            return None
 
         enp0s3_output = enp0s3_section.group(0)
         print("enp0s3 section:\n", enp0s3_output)
 
-        # Extract IPv4, IPv6, and MAC addresses from enp0s3 section
-        ipv4_match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", enp0s3_output)
-        ipv6_match = re.search(r"inet6\s+([a-fA-F0-9:]+)", enp0s3_output)
+        # Extract the MAC address from enp0s3 section
         mac_match = re.search(r"link/ether\s+([0-9a-fA-F:]{17})", enp0s3_output)
-
-        ipv4_address = ipv4_match.group(1) if ipv4_match else None
-        ipv6_address = ipv6_match.group(1) if ipv6_match else None
         mac_address = mac_match.group(1) if mac_match else None
 
-        print("Extracted IPv4:", ipv4_address)
-        print("Extracted IPv6:", ipv6_address)
-        print("Extracted MAC Address:", mac_address)
-
-        return ipv4_address, ipv6_address, mac_address
+        print("Extracted MAC Address from 'ip address':", mac_address)
+        return mac_address
 
     except Exception as e:
         print(f"An error occurred while connecting to the virtual device: {e}")
-        return None, None, None
+        return None
     finally:
         ssh_client.close()
 
-def run_arp_scan():
+def get_mac_from_arp_scan():
     """Run arp-scan on the local physical server (137) and retrieve the MAC address for the virtual device IP (133)."""
     print("Running 'arp-scan --localnet' on physical server (137)...")
     arp_scan_output = os.popen("sudo arp-scan --localnet").read()
@@ -69,14 +61,14 @@ def run_arp_scan():
     arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
     if arp_match:
         mac_from_arp_scan = arp_match.group(1)
-        print("Found MAC Address in arp-scan:", mac_from_arp_scan)
+        print("Extracted MAC Address from 'arp-scan':", mac_from_arp_scan)
         return mac_from_arp_scan
     else:
         print("MAC Address not found for the virtual device IP in arp-scan output.")
         return None
 
-def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
-    """Update the device in NetBox with IPs, MAC address, and status."""
+def update_netbox_device(mac_address, status):
+    """Update the device in NetBox with MAC address and status."""
     device = nb.dcim.devices.get(name=device_name)
     if device:
         print(f"Updating device '{device_name}' in NetBox...")
@@ -86,29 +78,23 @@ def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
                 "Mac address": mac_address  # Ensure this matches the exact name in NetBox
             }
         }
-        if ipv4_address:
-            update_data["primary_ip4"] = ipv4_address
-        if ipv6_address:
-            update_data["primary_ip6"] = ipv6_address
 
         device.update(update_data)
         print(f"Device '{device_name}' updated in NetBox with:")
-        print(f" - IPv4 Address: {ipv4_address}")
-        print(f" - IPv6 Address: {ipv6_address}")
         print(f" - MAC Address: {mac_address}")
         print(f" - Status: {status}")
     else:
         print(f"Device '{device_name}' not found in NetBox.")
 
 # Main script execution
-ipv4_address, ipv6_address, mac_address_from_ip_command = get_enp0s3_details()
-mac_address_from_arp_scan = run_arp_scan()
+mac_address_from_ip = get_enp0s3_mac_from_ip()
+mac_address_from_arp_scan = get_mac_from_arp_scan()
 
-if mac_address_from_ip_command and mac_address_from_arp_scan:
+if mac_address_from_ip and mac_address_from_arp_scan:
     # Compare MAC addresses to determine device status
-    status = "active" if mac_address_from_ip_command == mac_address_from_arp_scan else "offline"
+    status = "active" if mac_address_from_ip == mac_address_from_arp_scan else "offline"
     
-    # Update NetBox with device IP, MAC, and status information
-    update_netbox_device(ipv4_address, ipv6_address, mac_address_from_ip_command, status)
+    # Update NetBox with the MAC and status information
+    update_netbox_device(mac_address_from_ip, status)
 else:
     print("Failed to retrieve MAC address information from either the virtual device or the arp-scan output.")
