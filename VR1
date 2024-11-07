@@ -2,7 +2,6 @@ import paramiko
 import pynetbox
 import re
 import os
-import time
 
 # NetBox and device configuration
 NETBOX_URL = 'http://10.133.35.137:8000'
@@ -11,7 +10,6 @@ virtual_device_ip = '10.133.35.133'
 device_name = 'VR1'
 virtual_device_username = 'tcs'
 virtual_device_password = 'tcs12345'
-ARP_SCAN_RETRIES = 3  # Number of times to retry arp-scan if MAC not found
 
 # Initialize NetBox API
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
@@ -61,24 +59,21 @@ def get_enp0s3_details():
     finally:
         ssh_client.close()
 
-def run_arp_scan(retries=ARP_SCAN_RETRIES):
+def run_arp_scan():
     """Run arp-scan on the local physical server (137) and retrieve the MAC address for the virtual device IP (133)."""
-    for attempt in range(retries):
-        print(f"Running 'arp-scan --localnet' on physical server (137)... Attempt {attempt + 1}")
-        arp_scan_output = os.popen("sudo arp-scan --localnet").read()
-        print("Output from 'arp-scan':\n", arp_scan_output)
-        
-        # Search for the MAC address of the virtual device IP
-        arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
-        if arp_match:
-            print("Found MAC Address in arp-scan:", arp_match.group(1))
-            return arp_match.group(1)
-        else:
-            print("MAC Address not found for the virtual device IP in arp-scan output. Retrying...")
-            time.sleep(2)  # Wait a bit before retrying
-
-    print("MAC Address not found in arp-scan after multiple attempts.")
-    return None
+    print("Running 'arp-scan --localnet' on physical server (137)...")
+    arp_scan_output = os.popen("sudo arp-scan --localnet").read()
+    print("Output from 'arp-scan':\n", arp_scan_output)
+    
+    # Search for the MAC address of the virtual device IP
+    arp_match = re.search(rf"{virtual_device_ip}\s+([0-9a-fA-F:]{17})", arp_scan_output)
+    if arp_match:
+        mac_from_arp_scan = arp_match.group(1)
+        print("Found MAC Address in arp-scan:", mac_from_arp_scan)
+        return mac_from_arp_scan
+    else:
+        print("MAC Address not found for the virtual device IP in arp-scan output.")
+        return None
 
 def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
     """Update the device in NetBox with IPs, MAC address, and status."""
@@ -106,14 +101,14 @@ def update_netbox_device(ipv4_address, ipv6_address, mac_address, status):
         print(f"Device '{device_name}' not found in NetBox.")
 
 # Main script execution
-ipv4_address, ipv6_address, mac_address = get_enp0s3_details()
-arp_mac_address = run_arp_scan()
+ipv4_address, ipv6_address, mac_address_from_ip_command = get_enp0s3_details()
+mac_address_from_arp_scan = run_arp_scan()
 
-if mac_address and arp_mac_address:
+if mac_address_from_ip_command and mac_address_from_arp_scan:
     # Compare MAC addresses to determine device status
-    status = "active" if mac_address == arp_mac_address else "offline"
+    status = "active" if mac_address_from_ip_command == mac_address_from_arp_scan else "offline"
     
     # Update NetBox with device IP, MAC, and status information
-    update_netbox_device(ipv4_address, ipv6_address, mac_address, status)
+    update_netbox_device(ipv4_address, ipv6_address, mac_address_from_ip_command, status)
 else:
     print("Failed to retrieve MAC address information from either the virtual device or the arp-scan output.")
