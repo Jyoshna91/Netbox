@@ -1,0 +1,247 @@
+import paramiko
+import pynetbox
+import pandas as pd
+import re
+
+file_path = '/home/tcs/router_details.xlsx'
+data = pd.read_excel(file_path, engine='openpyxl')
+#print(data.columns)
+router_ips = data['Router_Ips'].tolist()
+router_names = data['Router_Names'].tolist()
+usernames = data['Username'].tolist()
+passwords = data['Password'].tolist()
+NETBOX_URL = data['Netbox_url'].iloc[0]
+NETBOX_TOKEN = data['Netbox_token'].iloc[0]
+
+print("Router IPs:", router_ips)
+print("Router Names:", router_names)
+
+router_map = dict(zip(router_ips,router_names))
+username = usernames[1]
+password = passwords[1]
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+aslis,asplis = [],[]
+rack_name = "Rack1"
+
+ssh_client = paramiko.SSHClient()
+ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+for router_ip,router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+    stdin, stdout, stderr = ssh_client.exec_command("show mac address-table")
+    output = stdout.read().decode()
+    stdin.close()
+    ssh_client.close()
+    print("\n",f"########################################{router_name}###############################################","\n")
+    print(output)
+
+    pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
+    match = re.search(pattern,output)
+    if match:
+        mac = match.group(1)
+        print(mac)
+
+    device = nb.dcim.devices.get(name=router_name)
+
+    if device:
+        device.update({
+            "custom_fields": {
+                "MAC_Address": mac
+        }
+    })
+        print(f"Device {router_name} mac address : {mac} is updated in netbox")
+
+    else:
+        print(f"device {router_name} not found in NetBox.")
+
+
+
+
+
+
+
+import paramiko
+import pynetbox
+import re
+import os
+
+NETBOX_URL = 'http://10.133.35.137:8000'
+NETBOX_TOKEN = 'b10f953429d54bcbe45a24445161f863b202089b'
+virtual_device_ip = '10.133.35.133'
+device_name = 'VR1'
+virtual_device_username = 'tcs'
+virtual_device_password = 'tcs123'
+
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+def get_enp0s3_ip_addresses():
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        ssh_client.connect(virtual_device_ip, username=virtual_device_username, password=virtual_device_password)
+
+        stdin, stdout, stderr = ssh_client.exec_command("ip address")
+        output = stdout.read().decode()
+
+        enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
+        if not enp0s3_section:
+            print("Could not find enp0s3 interface in the output.")
+            return None, None
+
+        enp0s3_output = enp0s3_section.group(0)
+        ipv4_match = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", enp0s3_output)
+        ipv6_match = re.search(r"inet6\s+([a-fA-F0-9:]+)", enp0s3_output)
+
+        ipv4_address = ipv4_match.group(1) if ipv4_match else None
+        ipv6_address = ipv6_match.group(1) if ipv6_match else None
+
+        return ipv4_address, ipv6_address
+
+    except Exception as e:
+        print(f"An error occurred while connecting to the virtual device: {e}")
+        return None, None
+    finally:
+        ssh_client.close()
+
+def get_cpu_count():
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        ssh_client.connect(virtual_device_ip, username=virtual_device_username, password=virtual_device_password)
+
+        stdin, stdout, stderr = ssh_client.exec_command("lscpu")
+        output = stdout.read().decode()
+
+        cpu_match = re.search(r"^CPU\(s\):\s+(\d+)", output, re.MULTILINE)
+        cpu_count = int(cpu_match.group(1)) if cpu_match else None
+        print(f"Extracted CPU Count: {cpu_count}")
+
+        return cpu_count
+    except Exception as e:
+        print(f"An error occurred while retrieving CPU count: {e}")
+        return None
+    finally:
+        ssh_client.close()
+
+def get_or_create_ip(ip_address, device, interface_name="enp0s3"):
+    ip_obj = nb.ipam.ip_addresses.get(address=ip_address)
+    if not ip_obj:
+        ip_obj = nb.ipam.ip_addresses.create({
+            "address": ip_address,
+        })
+
+    if not ip_obj.assigned_object:
+        interface = nb.dcim.interfaces.get(device_id=device.id, name=interface_name)
+        if not interface:
+            interface = nb.dcim.interfaces.create({
+                "device": device.id,
+                "name": interface_name,
+                "type": "10gbase-t"
+            })
+
+        ip_obj.update({"assigned_object_type": "dcim.interface", "assigned_object_id": interface.id})
+
+    return ip_obj
+
+def update_netbox_device_ips(ipv4_address, ipv6_address):
+    device = nb.dcim.devices.get(name=device_name)
+    if device:
+        ipv4_obj = get_or_create_ip(ipv4_address, device) if ipv4_address else None
+        ipv6_obj = get_or_create_ip(ipv6_address, device) if ipv6_address else None
+
+        update_data = {}
+
+        if ipv4_obj:
+            update_data["primary_ip4"] = ipv4_obj.id
+        if ipv6_obj:
+            update_data["primary_ip6"] = ipv6_obj.id
+
+        if update_data:
+            device.update(update_data)
+            print(f"Device '{device_name}' updated in NetBox with:")
+            print(f" - IPv4 Address: {ipv4_address}")
+            print(f" - IPv6 Address: {ipv6_address}")
+        else:
+            print("No IP address data to update.")
+    else:
+        print(f"Device '{device_name}' not found in NetBox.")
+
+def get_enp0s3_mac_from_ip():
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        print("Connecting to virtual device (133)...")
+        ssh_client.connect(virtual_device_ip, username=virtual_device_username, password=virtual_device_password)
+
+        stdin, stdout, stderr = ssh_client.exec_command("ip address")
+        output = stdout.read().decode()
+        print("Output from 'ip address':\n", output)
+
+        enp0s3_section = re.search(r"2: enp0s3.*?(?=^\d+:|\Z)", output, re.DOTALL | re.MULTILINE)
+        if enp0s3_section:
+            enp0s3_output = enp0s3_section.group(0)
+            print("Extracted enp0s3 section:\n", enp0s3_output)
+            mac_match = re.search(r"link/ether\s+([0-9a-fA-F:]{17})", enp0s3_output)
+            if mac_match:
+                mac = mac_match.group(1).lower()
+                print(f"Extracted MAC Address from 'ip address': {mac}")
+                return mac
+            else:
+                print("MAC address not found in 'ip address' output for enp0s3 section.")
+        else:
+            print("enp0s3 interface section not found in 'ip address' output.")
+        return None
+
+    except Exception as e:
+        print(f"An error occurred while connecting to the virtual device: {e}")
+        return None
+    finally:
+        ssh_client.close()
+
+def get_mac_from_arp_scan(target_ip, mac_to_match):
+    print("Running 'arp-scan --localnet' on physical server (137)...")
+    arp_scan_output = os.popen("sudo arp-scan --localnet").read()
+    print("Output from 'arp-scan':\n", arp_scan_output)
+
+    if target_ip in arp_scan_output and mac_to_match in arp_scan_output:
+        print(f"MAC address {mac_to_match} for IP {target_ip} found in arp-scan output.")
+        return True
+    else:
+        print(f"MAC address {mac_to_match} for IP {target_ip} NOT found in arp-scan output.")
+        return False
+
+def update_netbox_device(mac_address, status, cpu_count):
+    device = nb.dcim.devices.get(name=device_name)
+    if device:
+        print(f"Updating device '{device_name}' in NetBox...")
+        update_data = {
+            "status": status,
+            "custom_fields": {
+                "MAC_Address": mac_address,
+                "CPU": cpu_count
+            }
+        }
+
+        device.update(update_data)
+        print(f"Device '{device_name}' updated in NetBox with:")
+        print(f" - MAC Address: {mac_address}")
+        print(f" - Status: {status}")
+        print(f" - CPU Count: {cpu_count}")
+    else:
+        print(f"Device '{device_name}' not found in NetBox.")
+ipv4_address, ipv6_address = get_enp0s3_ip_addresses()
+if ipv4_address or ipv6_address:
+    update_netbox_device_ips(ipv4_address, ipv6_address)
+else:
+    print("Failed to retrieve necessary IP information from the enp0s3 interface.")
+
+mac_address_from_ip = get_enp0s3_mac_from_ip()
+cpu_count = get_cpu_count()
+if mac_address_from_ip:
+    is_active = get_mac_from_arp_scan(virtual_device_ip, mac_address_from_ip)
+    status = "active" if is_active else "offline"
+    update_netbox_device(mac_address_from_ip, status, cpu_count)
+else:
+    print("Failed to retrieve MAC address from the virtual device.")
