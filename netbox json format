@@ -1,0 +1,241 @@
+(myenv) tcs@tcs-HP-Compaq-Elite-8300-SFF:~/netbox-docker/ansible-netbox$ ansible-inventory --list -i netbox_inventory.yml
+{
+    "_meta": {
+        "hostvars": {
+            "HP-2920-24G": {
+                "ansible_host": "10.133.35.134",
+                "custom_fields": {
+                    "MAC_Address": "64:51:06:bf:0a:c0"
+                },
+                "device_roles": [
+                    "switch"
+                ],
+                "device_types": [
+                    "2920"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "hp"
+                ],
+                "primary_ip4": "10.133.35.134",
+                "racks": [
+                    "Rack1"
+                ],
+                "regions": [],
+                "serial": "SG47FLWSP2",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            },
+            "VR1": {
+                "ansible_host": "fe80::2886:37e5:b5cf:ca3b",
+                "custom_fields": {
+                    "CPU": 3,
+                    "MAC_Address": "08:00:27:b0:42:9a"
+                },
+                "device_roles": [
+                    "ubuntu-desktop"
+                ],
+                "device_types": [
+                    "16"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "ubuntu"
+                ],
+                "primary_ip4": "10.133.35.133",
+                "primary_ip6": "fe80::2886:37e5:b5cf:ca3b",
+                "racks": [
+                    "vRack"
+                ],
+                "regions": [],
+                "serial": "",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            },
+            "n9k1": {
+                "ansible_host": "10.133.35.148",
+                "custom_fields": {
+                    "CPU": 3,
+                    "MAC_Address": "5897.bd00.9cd2"
+                },
+                "device_roles": [
+                    "switch"
+                ],
+                "device_types": [
+                    "nexus9000"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "cisco"
+                ],
+                "primary_ip4": "10.133.35.148",
+                "racks": [
+                    "Rack1"
+                ],
+                "regions": [],
+                "serial": "SAL1927J6P3",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            },
+            "n9k2": {
+                "ansible_host": "10.133.35.150",
+                "custom_fields": {
+                    "MAC_Address": "fc5b.39f7.7d6c"
+                },
+                "device_roles": [
+                    "switch"
+                ],
+                "device_types": [
+                    "nexus9000"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "cisco"
+                ],
+                "primary_ip4": "10.133.35.150",
+                "racks": [
+                    "Rack1"
+                ],
+                "regions": [],
+                "serial": "SAL18401MPT",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            },
+            "n9k3": {
+                "ansible_host": "10.133.35.152",
+                "custom_fields": {
+                    "MAC_Address": "74a2.e6e8.6358"
+                },
+                "device_roles": [
+                    "switch"
+                ],
+                "device_types": [
+                    "nexus9000"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "cisco"
+                ],
+                "primary_ip4": "10.133.35.152",
+                "racks": [
+                    "Rack1"
+                ],
+                "regions": [],
+                "serial": "SAL1911B602",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            },
+            "n9k4": {
+                "ansible_host": "10.133.35.143",
+                "custom_fields": {
+                    "MAC_Address": "f40f.1bc2.bf3e"
+                },
+                "device_roles": [
+                    "switch"
+                ],
+                "device_types": [
+                    "nexus9000"
+                ],
+                "is_virtual": false,
+                "local_context_data": [
+                    null
+                ],
+                "locations": [],
+                "manufacturers": [
+                    "cisco"
+                ],
+                "primary_ip4": "10.133.35.143",
+                "racks": [
+                    "Rack1"
+                ],
+                "regions": [],
+                "serial": "SAL18411YGQ",
+                "services": [],
+                "site_groups": [],
+                "sites": [
+                    "site1"
+                ],
+                "status": {
+                    "label": "Active",
+                    "value": "active"
+                },
+                "tags": []
+            }
+        }
+    },
+    "all": {
+        "children": [
+            "ungrouped"
+        ]
+    },
+    "ungrouped": {
+        "hosts": [
+            "HP-2920-24G",
+            "n9k1",
+            "n9k2",
+            "n9k3",
+            "n9k4",
+            "VR1"
+        ]
+    }
+}
