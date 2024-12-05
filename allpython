@@ -4,7 +4,7 @@ import pandas as pd
 import re
 import os
 
-
+# Load router details from Excel
 file_path = '/home/tcs/router_details.xlsx'
 data = pd.read_excel(file_path, engine='openpyxl')
 
@@ -18,40 +18,69 @@ NETBOX_TOKEN = data['Netbox_token'].iloc[0]
 print("Router IPs:", router_ips)
 print("Router Names:", router_names)
 
-
 router_map = dict(zip(router_ips, router_names))
 username = usernames[1]
 password = passwords[1]
 nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
 aslis, asplis = [], []
-al, tcl, ol = [], [], []  
+al, tcl, ol = [], [], []
 rack_name = "Rack1"
 
 ssh_client = paramiko.SSHClient()
 ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
-
-for router_ip, router_name in router_map.items():
-    ssh_client.connect(router_ip, username=username, password=password)
-
-    # Retrieve OS Version
+# Function to get OS version
+def get_os_version(ssh_client):
     stdin, stdout, stderr = ssh_client.exec_command("show version")
     output = stdout.read().decode()
     stdin.close()
 
-    print(f"\n### {router_name} OS Version ###\n")
+    print("\n### OS Version ###\n")
     print(output)
 
-    os_pattern = r"NXOS\s+version\s+([\d.]+)"
-    os_match = re.search(os_pattern, output)
+    os_pattern = r"Software.*NXOS\s+version\s+([\d.]+)"
+    os_match = re.search(os_pattern, output, re.IGNORECASE)
     if os_match:
-        os_version = os_match.group(1)
-        print(f"OS Version: {os_version}")
+        return os_match.group(1)
     else:
-        os_version = None
-        print(f"OS Version not found for {router_name}.")
+        print("OS version not found.")
+        return None
 
-    # Add Fan Speed Details
+# Function to get MAC address and status
+def get_mac_and_status(ssh_client, router_ip):
+    stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
+    output = stdout.read().decode()
+    stdin.close()
+
+    print("\n### MAC and Status ###\n")
+    print(output)
+
+    mac_pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
+    mac_match = re.search(mac_pattern, output)
+    if mac_match:
+        mac = mac_match.group(1)
+        formatted_mac = mac.replace('.', '')
+        truncated_mac = ':'.join(formatted_mac[i:i + 2] for i in range(0, len(formatted_mac), 2)).lower()[:10]
+
+        # Check device status
+        arp_scan_output = os.popen('arp-scan --localnet').read()
+        device_status = "active" if router_ip in arp_scan_output and truncated_mac in arp_scan_output else "offline"
+        return truncated_mac, device_status
+    else:
+        return None, "offline"
+
+# Start processing each router
+for router_ip, router_name in router_map.items():
+    ssh_client.connect(router_ip, username=username, password=password)
+
+    # Get OS Version
+    os_version = get_os_version(ssh_client)
+
+    # Get MAC Address and Status
+    mac, device_status = get_mac_and_status(ssh_client, router_ip)
+
+    # Retrieve Fan Speed
     stdin, stdout, stderr = ssh_client.exec_command("show environment fan detail")
     output = stdout.read().decode()
     stdin.close()
@@ -72,7 +101,7 @@ for router_ip, router_name in router_map.items():
     print(f"Average Speed is : {rpm_sum / 6}")
     aslis.append(float(rpm_sum / 6))
 
-    # Add Serial Number Details
+    # Retrieve Serial Number
     stdin, stdout, stderr = ssh_client.exec_command("show inventory chassis")
     output = stdout.read().decode()
     stdin.close()
@@ -87,7 +116,7 @@ for router_ip, router_name in router_map.items():
     else:
         sn = None
 
-    # Add Power Utilization Details
+    # Retrieve Power Utilization
     stdin, stdout, stderr = ssh_client.exec_command("show environment power")
     output = stdout.read().decode()
     stdin.close()
@@ -112,29 +141,7 @@ for router_ip, router_name in router_map.items():
     tcl.append(power_details.get('input', 0))
     ol.append(power_details.get('capacity', 0))
 
-    # Add MAC Address and Active Status
-    stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
-    output = stdout.read().decode()
-    stdin.close()
-
-    print(f"\n### {router_name} MAC and Active Status ###\n")
-    print(output)
-
-    mac_pattern = r"([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})"
-    mac_match = re.search(mac_pattern, output)
-    if mac_match:
-        mac = mac_match.group(1)
-        formatted_mac = mac.replace('.', '')
-        truncated_mac = ':'.join(formatted_mac[i:i + 2] for i in range(0, len(formatted_mac), 2)).lower()[:10]
-
-        
-        arp_scan_output = os.popen('arp-scan --localnet').read()
-        device_status = "active" if router_ip in arp_scan_output and truncated_mac in arp_scan_output else "offline"
-    else:
-        device_status = "offline"
-        mac = None
-
-    # Update NetBox Device Details
+    # Update Device in NetBox
     device = nb.dcim.devices.get(name=router_name)
     if device:
         device.update({
@@ -149,11 +156,11 @@ for router_ip, router_name in router_map.items():
     else:
         print(f"Device {router_name} not found in NetBox.")
 
-
+# Calculate and Update Rack Information
 average_speed = int(sum(aslis) / len(aslis)) if aslis else 0
 average_percentage = int(sum(asplis) / len(asplis)) if asplis else 0
 input_sum = str(sum(tcl))
-output_sum =int(sum(ol))
+output_sum = int(sum(ol))
 
 rack = nb.dcim.racks.get(name=rack_name)
 if rack:
