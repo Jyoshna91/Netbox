@@ -1,0 +1,56 @@
+import pynetbox
+import yaml
+
+# NetBox API Configuration
+NETBOX_URL = "http://10.133.35.137:8000/"
+NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"
+
+# Connect to NetBox API
+nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+
+# Testbed structure
+testbed = {
+    "testbed": {
+        "name": "NetBox_Generated_Testbed",
+        "credentials": {
+            "default": {
+                "username": "tcs",  # Replace with actual username if different
+                "password": "123"   # Replace with actual password if different
+            }
+        },
+        "devices": {}
+    }
+}
+
+# Fetch devices from NetBox
+devices = nb.dcim.devices.all()
+
+for device in devices:
+    # Extract device details
+    device_name = device.name
+    primary_ip = device.primary_ip4.address.split('/')[0] if device.primary_ip4 else None
+    os = device.platform.slug if device.platform else "unknown"
+    role = device.device_role.slug if device.device_role else "unknown"
+
+    # Skip devices without an IP address
+    if not primary_ip:
+        print(f"Skipping device {device_name} (No IP Address).")
+        continue
+
+    # Add the device to the testbed
+    testbed["testbed"]["devices"][device_name] = {
+        "os": os,
+        "type": "switch" if "switch" in role else "router",  # Customize as needed
+        "connections": {
+            "cli": {
+                "protocol": "ssh",
+                "ip": primary_ip
+            }
+        }
+    }
+
+# Write the testbed to a YAML file
+testbed_file = "testbed.yaml"
+with open(testbed_file, "w") as file:
+    yaml.dump(testbed, file, default_flow_style=False)
+    print(f"Testbed file '{testbed_file}' generated successfully!")
