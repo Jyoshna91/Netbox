@@ -30,8 +30,8 @@ devices = nb.dcim.devices.all()
 for device in devices:
     device_name = device.name  # Device name from NetBox
     primary_ip = device.primary_ip4.address.split('/')[0] if device.primary_ip4 else None
-    os = device.platform.slug if device.platform else "unknown"
-    role = device.device_role.slug if device.device_role else "unknown"
+    device_type = device.device_type.display if hasattr(device.device_type, "display") else "unknown"
+    platform = device.platform.slug if hasattr(device.platform, "slug") else "unknown"
 
     # Skip devices without an IP address
     if not primary_ip:
@@ -40,9 +40,8 @@ for device in devices:
 
     # Determine device-specific credentials and connection details
     if device_name == "HP-2920-24G":
-        # HP device requires a jump server
         testbed["testbed"]["devices"][device_name] = {
-            "os": os,
+            "os": platform,
             "type": "switch",
             "connections": {
                 "cli": {
@@ -51,7 +50,7 @@ for device in devices:
                     "jump_host": {
                         "username": credentials["hp_jump"]["username"],
                         "password": credentials["hp_jump"]["password"],
-                        "device_ip": primary_ip  # Final HP device IP
+                        "device_ip": primary_ip
                     }
                 }
             },
@@ -63,9 +62,8 @@ for device in devices:
             }
         }
     elif device_name == "VR1":
-        # Virtual machine
         testbed["testbed"]["devices"][device_name] = {
-            "os": os,
+            "os": platform,
             "type": "vm",
             "connections": {
                 "cli": {
@@ -81,9 +79,8 @@ for device in devices:
             }
         }
     elif "n9k" in device_name.lower():
-        # Cisco Nexus devices
         testbed["testbed"]["devices"][device_name] = {
-            "os": os,
+            "os": platform,
             "type": "switch",
             "connections": {
                 "cli": {
