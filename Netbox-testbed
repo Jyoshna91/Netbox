@@ -12,22 +12,23 @@ nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
 testbed = {
     "testbed": {
         "name": "NetBox_Generated_Testbed",
-        "credentials": {
-            "default": {
-                "username": "tcs",  # Replace with actual username if different
-                "password": "123"   # Replace with actual password if different
-            }
-        },
         "devices": {}
     }
+}
+
+# Define credentials
+credentials = {
+    "cisco": {"username": "admin", "password": "tcs123"},
+    "hp_jump": {"username": "tcs", "password": "tcs123"},
+    "hp_device": {"username": "tcs", "password": None},  # No password for HP
+    "vm": {"username": "tcs", "password": "tcs123"}
 }
 
 # Fetch devices from NetBox
 devices = nb.dcim.devices.all()
 
 for device in devices:
-    # Extract device details
-    device_name = device.name
+    device_name = device.name  # Device name from NetBox
     primary_ip = device.primary_ip4.address.split('/')[0] if device.primary_ip4 else None
     os = device.platform.slug if device.platform else "unknown"
     role = device.device_role.slug if device.device_role else "unknown"
@@ -37,19 +38,68 @@ for device in devices:
         print(f"Skipping device {device_name} (No IP Address).")
         continue
 
-    # Add the device to the testbed
-    testbed["testbed"]["devices"][device_name] = {
-        "os": os,
-        "type": "switch" if "switch" in role else "router",  # Customize as needed
-        "connections": {
-            "cli": {
-                "protocol": "ssh",
-                "ip": primary_ip
+    # Determine device-specific credentials and connection details
+    if device_name == "HP-2920-24G":
+        # HP device requires a jump server
+        testbed["testbed"]["devices"][device_name] = {
+            "os": os,
+            "type": "switch",
+            "connections": {
+                "cli": {
+                    "protocol": "ssh",
+                    "ip": "10.133.35.138",  # Jump server IP
+                    "jump_host": {
+                        "username": credentials["hp_jump"]["username"],
+                        "password": credentials["hp_jump"]["password"],
+                        "device_ip": primary_ip  # Final HP device IP
+                    }
+                }
+            },
+            "credentials": {
+                "default": {
+                    "username": credentials["hp_device"]["username"],
+                    "password": credentials["hp_device"]["password"]
+                }
             }
         }
-    }
+    elif device_name == "VR1":
+        # Virtual machine
+        testbed["testbed"]["devices"][device_name] = {
+            "os": os,
+            "type": "vm",
+            "connections": {
+                "cli": {
+                    "protocol": "ssh",
+                    "ip": primary_ip
+                }
+            },
+            "credentials": {
+                "default": {
+                    "username": credentials["vm"]["username"],
+                    "password": credentials["vm"]["password"]
+                }
+            }
+        }
+    elif "n9k" in device_name.lower():
+        # Cisco Nexus devices
+        testbed["testbed"]["devices"][device_name] = {
+            "os": os,
+            "type": "switch",
+            "connections": {
+                "cli": {
+                    "protocol": "ssh",
+                    "ip": primary_ip
+                }
+            },
+            "credentials": {
+                "default": {
+                    "username": credentials["cisco"]["username"],
+                    "password": credentials["cisco"]["password"]
+                }
+            }
+        }
 
-# Write the testbed to a YAML file
+# Write to testbed.yaml
 testbed_file = "testbed.yaml"
 with open(testbed_file, "w") as file:
     yaml.dump(testbed, file, default_flow_style=False)
