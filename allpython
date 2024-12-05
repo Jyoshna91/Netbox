@@ -34,7 +34,24 @@ ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 for router_ip, router_name in router_map.items():
     ssh_client.connect(router_ip, username=username, password=password)
 
-    
+    # Retrieve OS Version
+    stdin, stdout, stderr = ssh_client.exec_command("show version")
+    output = stdout.read().decode()
+    stdin.close()
+
+    print(f"\n### {router_name} OS Version ###\n")
+    print(output)
+
+    os_pattern = r"NXOS\s+version\s+([\d.]+)"
+    os_match = re.search(os_pattern, output)
+    if os_match:
+        os_version = os_match.group(1)
+        print(f"OS Version: {os_version}")
+    else:
+        os_version = None
+        print(f"OS Version not found for {router_name}.")
+
+    # Add Fan Speed Details
     stdin, stdout, stderr = ssh_client.exec_command("show environment fan detail")
     output = stdout.read().decode()
     stdin.close()
@@ -55,7 +72,7 @@ for router_ip, router_name in router_map.items():
     print(f"Average Speed is : {rpm_sum / 6}")
     aslis.append(float(rpm_sum / 6))
 
-    
+    # Add Serial Number Details
     stdin, stdout, stderr = ssh_client.exec_command("show inventory chassis")
     output = stdout.read().decode()
     stdin.close()
@@ -70,7 +87,7 @@ for router_ip, router_name in router_map.items():
     else:
         sn = None
 
-
+    # Add Power Utilization Details
     stdin, stdout, stderr = ssh_client.exec_command("show environment power")
     output = stdout.read().decode()
     stdin.close()
@@ -95,7 +112,7 @@ for router_ip, router_name in router_map.items():
     tcl.append(power_details.get('input', 0))
     ol.append(power_details.get('capacity', 0))
 
-    
+    # Add MAC Address and Active Status
     stdin, stdout, stderr = ssh_client.exec_command("show interface mgmt0")
     output = stdout.read().decode()
     stdin.close()
@@ -117,17 +134,18 @@ for router_ip, router_name in router_map.items():
         device_status = "offline"
         mac = None
 
-    
+    # Update NetBox Device Details
     device = nb.dcim.devices.get(name=router_name)
     if device:
         device.update({
             "serial": sn,
             "custom_fields": {
-                "MAC_Address": mac
+                "MAC_Address": mac,
+                "OS_Version": os_version
             },
             "status": device_status
         })
-        print(f"Updated {router_name} in NetBox with serial and MAC address.")
+        print(f"Updated {router_name} in NetBox with OS version, serial, and MAC address.")
     else:
         print(f"Device {router_name} not found in NetBox.")
 
