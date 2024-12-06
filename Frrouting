@@ -1,0 +1,53 @@
+
+The error message indicates that the provided key is not a valid key ID. Let's address this step-by-step:
+
+Root Cause
+
+The apt-key command expects a valid short or long GPG key ID. In this case, the key 74DEDBDB43AB194DBF might be incorrect or incomplete.
+
+
+---
+
+Solution 1: Use the Correct Key ID
+
+1. Double-check the key ID from the repository's official documentation or website.
+
+
+2. Alternatively, add the FRRouting repository securely using the modern gpg method:
+
+wget -q -O - https://deb.frrouting.org/frr/DEB.GPG.KEY | sudo gpg --dearmor -o /usr/share/keyrings/frr-keyring.gpg
+
+
+3. Update the repository configuration:
+
+echo "deb [signed-by=/usr/share/keyrings/frr-keyring.gpg] https://deb.frrouting.org/frr $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/frr.list
+
+
+4. Update your system:
+
+sudo apt update
+sudo apt install frr
+
+
+
+
+---
+
+Solution 2: Use Alternative Keyserver
+
+If the issue persists, try using an alternative keyserver:
+
+sudo apt-key adv --keyserver hkps://keyserver.ubuntu.com --recv-keys 74DEDBDB43AB194DBF
+
+
+---
+
+Solution 3: Validate Keyserver Reachability
+
+Check if the keyserver is reachable:
+
+ping keyserver.ubuntu.com
+
+If it isn't, ensure your system has internet access or try using a different keyserver, such as:
+
+sudo apt-key adv --keyserver hkps://keys.openpgp.org --recv-keys 74DEDBDB43AB194DBF
