@@ -1,27 +1,28 @@
 from pyats.topology import loader
 
-# Load the testbed file
-testbed = loader.load("testbed.yaml")
+# Load the testbed
+testbed = loader.load('testbed.yaml')
 
-# Connect to all devices
+# Iterate over each device in the testbed
 for device_name, device in testbed.devices.items():
-    print(f"\nConnecting to {device_name}...")
+    print(f"Connecting to device: {device_name}")
     try:
+        # Connect to the device
         device.connect()
-        print(f"Connected to {device_name}.")
-
-        # Execute show commands
-        show_version_output = device.execute("show version")
-        print(f"\n### {device_name} - Show Version ###\n")
-        print(show_version_output)
-
-        show_interfaces_output = device.execute("show ip interface brief")
-        print(f"\n### {device_name} - Show IP Interface Brief ###\n")
-        print(show_interfaces_output)
-
-        # Disconnect after executing commands
+        print(f"Connected to {device_name}")
+        
+        # Run show version command
+        print(f"\n### {device_name} - Show Version ###")
+        show_version = device.execute("show version")
+        print(show_version)
+        
+        # Run show interface command
+        print(f"\n### {device_name} - Show Interface ###")
+        show_interface = device.execute("show interface")
+        print(show_interface)
+        
+        # Disconnect from the device
         device.disconnect()
-        print(f"Disconnected from {device_name}.")
-
+        print(f"Disconnected from {device_name}")
     except Exception as e:
-        print(f"Failed to connect or execute commands on {device_name}: {str(e)}")
+        print(f"Failed to connect to {device_name}: {e}")
