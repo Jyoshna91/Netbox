@@ -1,109 +1,27 @@
-import pynetbox
-import yaml
+from pyats.topology import loader
 
-# NetBox API Configuration
-NETBOX_URL = "http://10.133.35.137:8000/"
-NETBOX_TOKEN = "b10f953429d54bcbe45a24445161f863b202089b"
+# Load the testbed file
+testbed = loader.load("testbed.yaml")
 
-# Connect to NetBox API
-nb = pynetbox.api(NETBOX_URL, token=NETBOX_TOKEN)
+# Connect to all devices
+for device_name, device in testbed.devices.items():
+    print(f"\nConnecting to {device_name}...")
+    try:
+        device.connect()
+        print(f"Connected to {device_name}.")
 
-# Testbed structure
-testbed = {
-    "testbed": {
-        "name": "NetBox_Generated_Testbed",
-        "devices": {}
-    }
-}
+        # Execute show commands
+        show_version_output = device.execute("show version")
+        print(f"\n### {device_name} - Show Version ###\n")
+        print(show_version_output)
 
-# Define credentials
-credentials = {
-    "cisco": {"username": "admin", "password": "tcs123"},
-    "hp_jump": {"username": "tcs", "password": "tcs123"},
-    "hp_device": {"username": "tcs", "password": None},  # No password for HP
-    "vm": {"username": "tcs", "password": "tcs123"}
-}
+        show_interfaces_output = device.execute("show ip interface brief")
+        print(f"\n### {device_name} - Show IP Interface Brief ###\n")
+        print(show_interfaces_output)
 
-# Fetch devices from NetBox
-devices = nb.dcim.devices.all()
+        # Disconnect after executing commands
+        device.disconnect()
+        print(f"Disconnected from {device_name}.")
 
-for device in devices:
-    device_name = device.name  # Device name from NetBox
-    primary_ip = device.primary_ip4.address.split('/')[0] if device.primary_ip4 else None
-    device_type = device.device_type.display if hasattr(device.device_type, "display") else "unknown"
-    platform = device.platform.slug if hasattr(device.platform, "slug") else "unknown"
-
-    # Retrieve OS Version from NetBox
-    os_version = device.custom_fields.get("OS_Version", "unknown")
-
-    # Skip devices without an IP address
-    if not primary_ip:
-        print(f"Skipping device {device_name} (No IP Address).")
-        continue
-
-    # Determine device-specific credentials and connection details
-    if device_name == "HP-2920-24G":
-        testbed["testbed"]["devices"][device_name] = {
-            "os": platform,
-            "os_version": os_version,
-            "type": "switch",
-            "connections": {
-                "cli": {
-                    "protocol": "ssh",
-                    "ip": "10.133.35.138",  # Jump server IP
-                    "jump_host": {
-                        "username": credentials["hp_jump"]["username"],
-                        "password": credentials["hp_jump"]["password"],
-                        "device_ip": primary_ip
-                    }
-                }
-            },
-            "credentials": {
-                "default": {
-                    "username": credentials["hp_device"]["username"],
-                    "password": credentials["hp_device"]["password"]
-                }
-            }
-        }
-    elif device_name == "VR1":
-        testbed["testbed"]["devices"][device_name] = {
-            "os": platform,
-            "os_version": os_version,
-            "type": "vm",
-            "connections": {
-                "cli": {
-                    "protocol": "ssh",
-                    "ip": primary_ip
-                }
-            },
-            "credentials": {
-                "default": {
-                    "username": credentials["vm"]["username"],
-                    "password": credentials["vm"]["password"]
-                }
-            }
-        }
-    elif "n9k" in device_name.lower():
-        testbed["testbed"]["devices"][device_name] = {
-            "os": platform,
-            "os_version": os_version,
-            "type": "switch",
-            "connections": {
-                "cli": {
-                    "protocol": "ssh",
-                    "ip": primary_ip
-                }
-            },
-            "credentials": {
-                "default": {
-                    "username": credentials["cisco"]["username"],
-                    "password": credentials["cisco"]["password"]
-                }
-            }
-        }
-
-# Write to testbed.yaml
-testbed_file = "testbed.yaml"
-with open(testbed_file, "w") as file:
-    yaml.dump(testbed, file, default_flow_style=False)
-    print(f"Testbed file '{testbed_file}' generated successfully!")
+    except Exception as e:
+        print(f"Failed to connect or execute commands on {device_name}: {str(e)}")
