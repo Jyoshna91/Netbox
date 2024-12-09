@@ -39,7 +39,8 @@ def get_os_version(ssh_client):
     print("\n### OS Version ###\n")
     print(output)
 
-    os_pattern = r"NXOS:\s*version\s*([\d.]+\([\d]+\))"
+    # Extract OS version under Software -> NXOS
+    os_pattern = r"NXOS:\s*version\s*([\d.]+)"
     os_match = re.search(os_pattern, output, re.IGNORECASE)
     if os_match:
         return os_match.group(1)
